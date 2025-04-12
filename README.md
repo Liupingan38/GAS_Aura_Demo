@@ -23,3 +23,4 @@
 2. 置为false，能提高
  ![](https://tuchuanglpa.oss-cn-beijing.aliyuncs.com/tuchuanglpa/20250412200058062.png)
 3.更改文件目录结构，需要重新编译，删掉Binaries和intermedate文件夹
+4. 添加派生类AuraCharactor,AuraEnemy
