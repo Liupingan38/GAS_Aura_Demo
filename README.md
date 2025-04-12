@@ -11,7 +11,7 @@
 
 ## 4.创建AuraCharacterBase基类
 1.在ue5中下载用于调试的工具
-![](https://tuchuanglpa.oss-cn-beijing.aliyuncs.com/tuchuanglpa/20250412191135571.png)
+![](https://tuchuanglpa.oss-cn-beijing.aliyuncs.com/tuchuanglpa/20250412193313982.png)
 2. 点击rider中的run按钮在非debug模式下运行，debug按钮在debug模式下运行
 ## 5.Player and Enemy Charecters
 1. 将 Abstract 添加到 UCLASS 宏中用于标记该类为 抽象基类，禁止直接实例化;
@@ -19,3 +19,7 @@
 >核心作用:
 1.禁止创建实例：标记为 Abstract 的类无法在 UE 编辑器中被直接拖放到场景或蓝图继承，只能作为其他类的父类使用。
 2.强制派生：确保开发者必须通过子类实现具体功能，符合面向对象设计中的抽象类原则。
+
+2. 置为false，能提高
+ ![](https://tuchuanglpa.oss-cn-beijing.aliyuncs.com/tuchuanglpa/20250412200058062.png)
+3.更改文件目录结构，需要重新编译，删掉Binaries和intermedate文件夹
