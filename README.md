@@ -62,7 +62,7 @@
 1.禁止创建实例：标记为 Abstract 的类无法在 UE 编辑器中被直接拖放到场景或蓝图继承，只能作为其他类的父类使用。
 2.强制派生：确保开发者必须通过子类实现具体功能，符合面向对象设计中的抽象类原则。
 
-2. 置为false，能提高
+2. 置为false，避免不必要的每帧更新，节省性能。
  ![](https://tuchuanglpa.oss-cn-beijing.aliyuncs.com/tuchuanglpa/20250412200058062.png)
 
 3.更改文件目录结构，需要重新编译，删掉Binaries和intermedate文件夹
@@ -77,9 +77,9 @@ Weapon=CreateDefaultSubobject<USkeletalMeshComponent>("Weapon");
 Weapon->SetupAttachment(GetMesh(),FName("WeaponHandSocket"));
 Weapon->SetCollisionEnabled(ECollisionEnabled::Type::NoCollision);
 ```
-1. 创建角色蓝图，为角色添加SKM网格
-2. 为角色SKM网格添加socket，并绑定preview
-3. 回到蓝图中，为weapon添加SKM网格
+2. 创建角色蓝图，为角色添加SKM网格
+3. 为角色SKM网格添加socket，并绑定preview
+4. 回到蓝图中，为weapon添加SKM网格
 # 为什么使用 TObjectPtr 代替传统的裸指针（如 USkeletalMeshComponent*）来引用骨架网格体（Skeletal Mesh）或其他 UObject 派生类对象
 
 在 Unreal Engine 中，`TObjectPtr` 是一种智能指针类型，用于替代传统的裸指针（如 `USkeletalMeshComponent*`）来引用 `UObject` 派生类对象（如骨架网格体 `USkeletalMeshComponent`）。以下是使用 `TObjectPtr` 的优势和原因：
