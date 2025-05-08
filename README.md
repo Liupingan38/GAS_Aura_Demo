@@ -1,5 +1,19 @@
-# 1.学习笔记
-## 纯函数
+# 1.Super::BeginPlay();
+
+> ✅ **调用父类（基类）中实现的 `BeginPlay()` 函数，确保父类的初始化逻辑也被执行。**
+
+---
+
+### 📘 背景
+
+在 Unreal Engine 中，`BeginPlay()` 是一个虚函数，表示游戏开始（或 Actor 被激活）时调用的初始化方法。
+
+当你在子类中重写了 `BeginPlay()`，如果**不手动调用 `Super::BeginPlay()`**，那么：
+
+* 父类的 `BeginPlay()` 中的逻辑就不会执行；
+* 这可能导致例如组件未激活、输入未注册、默认行为丢失等问题。
+
+# 2.纯函数
 ---
 在 **Unreal Engine 5 (UE5)** 中，**纯函数（Pure Function）** 是一个重要的概念，尤其在 **蓝图（Blueprint）** 和 **C++** 开发中。它指的是 **不修改游戏状态、没有副作用，且输出仅依赖于输入参数** 的函数。UE5 对纯函数有明确的标记和支持，主要用于优化性能和逻辑清晰性。
 
@@ -40,47 +54,14 @@
   ```
 - **避免依赖全局状态**  
   如 `UGameplayStatics::GetPlayerController(0)` 可能因玩家索引变化导致非确定性。
-
-# 2.UE5设置
-1. 设置源码IDE
-2. 禁止热重载，自动compile c++ class
-3. 禁止live coding
-4. 设置默认和起始地图
-5. 确保rider集成插件打开
-   
-# 3.git 版本控制
-1. 创建.gitignore文件，不会上传添加在列的文件
-
-# 4.创建AuraCharacterBase基类
-1.在ue5中下载用于调试的工具
-![](https://tuchuanglpa.oss-cn-beijing.aliyuncs.com/tuchuanglpa/20250412193313982.png)
-2. 点击rider中的run按钮在非debug模式下运行，debug按钮在debug模式下运行
-# 5.Player and Enemy Charecters
-1. 将 Abstract 添加到 UCLASS 宏中用于标记该类为 抽象基类，禁止直接实例化;
+# 3.UCLASS(Abstract) 
+将 Abstract 添加到 UCLASS 宏中用于标记该类为 抽象基类，禁止直接实例化;
 
 >核心作用:
 1.禁止创建实例：标记为 Abstract 的类无法在 UE 编辑器中被直接拖放到场景或蓝图继承，只能作为其他类的父类使用。
 2.强制派生：确保开发者必须通过子类实现具体功能，符合面向对象设计中的抽象类原则。
 
-2. 置为false，避免不必要的每帧更新，节省性能。
- ![](https://tuchuanglpa.oss-cn-beijing.aliyuncs.com/tuchuanglpa/20250412200058062.png)
-
-3.更改文件目录结构，需要重新编译，删掉Binaries和intermedate文件夹
-4. 添加派生类AuraCharactor,AuraEnemy
-
-
-# 6.Character Blueprint Setup
-## 为角色基类添加武器骨骼网格体
-1. cpp文件中添加weapon子物体，并绑定socket
-```cpp
-Weapon=CreateDefaultSubobject<USkeletalMeshComponent>("Weapon");
-Weapon->SetupAttachment(GetMesh(),FName("WeaponHandSocket"));
-Weapon->SetCollisionEnabled(ECollisionEnabled::Type::NoCollision);
-```
-2. 创建角色蓝图，为角色添加SKM网格
-3. 为角色SKM网格添加socket，并绑定preview
-4. 回到蓝图中，为weapon添加SKM网格
-# 为什么使用 TObjectPtr 代替传统的裸指针（如 USkeletalMeshComponent*）来引用骨架网格体（Skeletal Mesh）或其他 UObject 派生类对象
+# 4.为什么使用 TObjectPtr 代替传统的裸指针（如 USkeletalMeshComponent*）来引用骨架网格体（Skeletal Mesh）或其他 UObject 派生类对象
 
 在 Unreal Engine 中，`TObjectPtr` 是一种智能指针类型，用于替代传统的裸指针（如 `USkeletalMeshComponent*`）来引用 `UObject` 派生类对象（如骨架网格体 `USkeletalMeshComponent`）。以下是使用 `TObjectPtr` 的优势和原因：
 
@@ -135,7 +116,7 @@ Weapon->SetCollisionEnabled(ECollisionEnabled::Type::NoCollision);
    }
    ```
 
-# FName 和 FString 的区别：
+# 5.FName 和 FString 的区别：
 
 1. **FName**：
 
@@ -154,119 +135,33 @@ Weapon->SetCollisionEnabled(ECollisionEnabled::Type::NoCollision);
 * `FName` 更适合用于需要高效比较和查找的情况（例如ID或标签）。
 * `FString` 更适合需要进行大量字符串操作和修改的情况（例如文本显示和处理）。
 
-
-# 7.Animation Blueprint
-# 为主角添加动画蓝图
-## 1. 创建ABP_Aura
-## 2. 创建state machine “Main States”![](https://tuchuanglpa.oss-cn-beijing.aliyuncs.com/tuchuanglpa/20250504143131869.png)
-  ### Slot
->- Slot 节点用于在动画蓝图中为动画蒙太奇（Montage）预留一个“插槽”位置，插入覆盖动画。
->- 如果播放某个 Montage 动画（如攻击、跳跃），它会插入到这个 Slot 中，并 覆盖 状态机的当前动画（比如正在跑步时切换成攻击动画）。
-## 3. 添加“IdleWalkRun” State
-## 4. 重写 InitialAnimation获取characterMovement ![](https://tuchuanglpa.oss-cn-beijing.aliyuncs.com/tuchuanglpa/20250504145346552.png)
-这张图展示的是 **Unreal Engine 动画蓝图（AnimBlueprint）中 `Event Blueprint Initialize Animation` 节点的初始化逻辑**，它的主要作用是 **获取当前控制该动画的角色（Pawn/Character）引用** 并保存下来，以便后续动画更新时访问角色属性（如移动速度、状态等）。
+# 6.✅ 为什么前向声明也能用？
+因为你写的是：
+```cpp
+TObjectPtr<UInputMappingContext> AuraContext;
+```
+这只需要知道 `UInputMappingContext` 是一个类即可（类型大小是已知的智能指针，不需要完整类型）。
 
 ---
 
-### 🔍 各节点含义解释如下：
+#### 🚨 但是注意：
 
-1. **`Event Blueprint Initialize Animation`**
+这种写法**只在以下情况下有效**：
 
-   * 当动画蓝图第一次初始化时触发（比如角色刚生成、刚加载时）。
-   * 适合做一些一次性的引用绑定（如保存角色对象、组件等）。
+| 情况                                                                | 能否只写前向声明？                    | 原因           |
+| ----------------------------------------------------------------- | ---------------------------- | ------------ |
+| 作为指针 `UInputMappingContext*`、或 `TObjectPtr<UInputMappingContext>` | ✅ 可以                         | 不需要知道类型大小    |
+| 作为值类型（直接构造对象）`UInputMappingContext obj;`                          | ❌ 不行                         | 编译器必须知道类完整定义 |
+| 使用类成员函数或访问字段 `AuraContext->SomeFunction()`                        | ❌ 不行（在 .cpp 中必须 include 完整头） |              |
 
-2. **`Try Get Pawn Owner`**
+# 7.bReplicated
+![](https://tuchuanglpa.oss-cn-beijing.aliyuncs.com/tuchuanglpa/20250506105559866.png)
 
-   * 获取这个动画蓝图当前附着的 Pawn（通常是角色角色）的引用。
-   * 输出是 `APawn*` 类型（返回控制这个动画的角色对象）。
+#### 🔍 具体解释：
 
-3. **`Cast to BP_AuraCharacter`**
+#### `bReplicates` 是 `AActor` 的一个布尔成员变量：
 
-   * 尝试将 `Pawn` 强制转换（Cast）为你自己创建的角色类（`BP_AuraCharacter`）。
-   * 成功后可以访问 Aura 角色的特有属性和函数。
-   * `Cast Failed` 用于处理失败情况（此处未连线，代表默认忽略失败）。
-
-4. **`SET BP Aura Character`**
-
-   * 把转换成功的 `BP_AuraCharacter` 引用存入动画蓝图的一个变量（比如你创建的 `BP_AuraCharacter` 类型变量），供其他地方调用。
-
-5. **`Character Movement`**
-
-   * 从 Aura Character 中提取 `CharacterMovement` 组件（控制角色移动逻辑的组件），以便动画蓝图后续使用移动状态（如速度、是否在地面等）。
-
-6. **`SET Character Movement`**
-
-   * 将提取的 `CharacterMovement` 组件保存为动画蓝图中的变量，供后续节点访问。
-
-## 5. 根据角色的移动速度来设置动画蓝图中的 `Speed` 变量
-![](https://tuchuanglpa.oss-cn-beijing.aliyuncs.com/tuchuanglpa/20250504160643791.png)这张图展示的是 **Unreal Engine 动画蓝图中 `Event Blueprint Update Animation` 的逻辑**，它的主要作用是：**在每一帧更新时，根据角色的移动速度来设置动画蓝图中的 `Speed` 变量**，用于驱动角色的运动动画（如 Idle、Walk、Run 等）。
-
----
-
-### 🔍 各节点含义说明：
-
-#### 1. **`Event Blueprint Update Animation`**
-
-* 每一帧都会被调用。
-* 适用于实时获取角色状态（如速度、是否在地面等）以更新动画状态机所需变量。
-
----
-
-#### 2. **`GET BP Aura Character` + `Is Valid`**
-
-* 获取上面你初始化时保存的 `BP_AuraCharacter` 变量。
-* 使用 `Is Valid` 节点进行有效性检查，防止引用为 null 时程序崩溃。
-* 如果角色存在，则继续执行后面的逻辑。
-
----
-
-#### 3. **`Character Movement → Velocity`**
-
-* 使用之前保存的 `CharacterMovement` 组件，获取它的 **速度向量（`Velocity`）**。
-* 这是一个 `Vector` 值，包含 X、Y、Z 方向的速度信息。
-
----
-
-#### 4. **`Vector Length XY`**
-
-* 计算 `Velocity` 向量的 **水平速度（X 和 Y 分量的长度）**，忽略垂直方向（Z），以排除跳跃或下落影响。
-* 返回的是一个浮点数，表示单位/秒的移动速度。
-
----
-
-#### 5. **`SET Speed`**
-
-* 将刚刚计算出来的水平速度赋值给动画蓝图中的变量 `Speed`。
-* 这个变量通常会用于动画状态机中，判断角色是否处于 Idle、Walk、Run 等状态。
-
----
-
-### ✅ 总结作用：
-
-每一帧中，这段逻辑会：
-
-1. 确认角色引用有效；
-2. 获取角色的当前移动速度；
-3. 计算水平速度大小；
-4. 设置 `Speed` 变量供动画系统使用。
-
----
-
-## 6. 设置蓝图mesh的ABP
-
-# 为敌人添加动画蓝图
-## 1. 创建模板动画蓝图ABP_Enemy
-## 2. 使用的是 **Blend Space（混合空间）** 来根据角色速度动态切换动画![](https://tuchuanglpa.oss-cn-beijing.aliyuncs.com/tuchuanglpa/20250504164228214.png)
-这张图展示的是 **Unreal Engine 中动画状态机的一个状态（如 Running、Walking、Idle）内部的动画逻辑**，使用的是 **Blend Space（混合空间）** 来根据角色速度动态切换动画。
-
----
-
-#### 2. **Blendspace Player**
-
-* 这是一个 **Blend Space 动画节点**，可以根据输入的数值在多个动画之间平滑过渡。
-* 它的 **X轴通常代表速度（Speed）**，用于控制在 Idle、Walk、Run 动画之间平滑切换。
-* 此处 `Ground Speed` 被连到 X 输入，Y 为 0，说明这是一个 **一维（1D）Blend Space**（只根据速度混合）。
-
----
-## 3. 创建子动画蓝图ABP_Goblin_Spear，设置混合空间动画
-## 4. 设置蓝图mesh的ABP
+* 设置为 `true`，表示 **这个 Actor 会自动在服务器和客户端之间进行同步**。即**网络同步（Replication）**
+* 默认情况下，某些 Actor（如 PlayerController）可能不会自动启用。
+* 在多人游戏中，**你必须设置 `bReplicates = true` 才能让属性/函数通过网络传播**。
+* 常用于：`Pawn`、`Character`、`PlayerController`、`GameState`、自定义 `Actor` 等。
