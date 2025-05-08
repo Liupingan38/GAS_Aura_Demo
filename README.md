@@ -165,3 +165,218 @@ TObjectPtr<UInputMappingContext> AuraContext;
 * 默认情况下，某些 Actor（如 PlayerController）可能不会自动启用。
 * 在多人游戏中，**你必须设置 `bReplicates = true` 才能让属性/函数通过网络传播**。
 * 常用于：`Pawn`、`Character`、`PlayerController`、`GameState`、自定义 `Actor` 等。
+
+# 8.class和struct
+
+## ✅ 1. **UE 的命名规则：`F` 开头的是 `struct`，`U` 开头的是 `UCLASS`**
+
+| 前缀  | 含义                   | 示例                                           |
+| --- | -------------------- | -------------------------------------------- |
+| `F` | 普通数据结构（`struct`）     | `FVector`, `FHitResult`, `FInputActionValue` |
+| `U` | UObject 派生类（`class`） | `UInputAction`, `UActorComponent`            |
+| `A` | Actor 类（`class`）     | `ACharacter`, `APlayerController`            |
+| `I` | 接口类                  | `IAbilitySystemInterface`                    |
+| `E` | 枚举类型                 | `EInputEvent`, `EPhysicalSurface`            |
+
+所以：
+
+* `FInputActionValue` 是一个简单的值封装类型 → 用 `struct`
+* `UInputAction` 是一个资源资产对象（继承自 `UObject`）→ 用 `UCLASS`
+
+---
+
+## ✅ 2. UE4/UE5 中 `struct` 和 `class` 没本质差别（只是默认权限不同）
+
+C++ 中：
+
+* `class`：默认成员是 `private`
+* `struct`：默认成员是 `public`
+
+Unreal 为了表达“轻量数据类型”，会倾向使用 `struct`。
+
+# 9. 回调函数
+这行代码是 Unreal Engine 5 中使用 **Enhanced Input 系统** 绑定输入动作的标准方式：
+
+```cpp
+EnhancedInputComponent->BindAction(
+    MoveAction,
+    ETriggerEvent::Triggered,
+    this,
+    &AAuraPlayerController::Move
+);
+```
+
+---
+
+## ✅ 简明解释：
+
+> 当 `MoveAction` 被触发（Triggered）时，调用当前对象 `this` 上的 `Move` 函数。
+
+---
+
+### 参数含义：
+
+| 参数                             | 含义                                      |
+| ------------------------------ | --------------------------------------- |
+| `MoveAction`                   | 要监听的输入动作（`UInputAction*` 类型）            |
+| `ETriggerEvent::Triggered`     | 触发时机（例如按钮被按下时）                          |
+| `this`                         | 绑定到哪个对象（这里是当前的 `AAuraPlayerController`） |
+| `&AAuraPlayerController::Move` | 要调用的回调**函数指针**（成员函数）                        |
+
+---
+
+## 🔁 回调函数是什么？
+
+> 回调函数（Callback）是指在特定事件发生时，**被自动调用的函数**。
+
+在这里，回调函数就是：
+
+```cpp
+void AAuraPlayerController::Move(const FInputActionValue& InputActionValue);
+```
+
+它会在玩家执行了 `MoveAction`（例如：按下左摇杆、WASD 键）后被触发。
+
+# 10. Rotator
+![](https://tuchuanglpa.oss-cn-beijing.aliyuncs.com/tuchuanglpa/20250508144128804.png)
+## Rotator(Pitch,Yaw,Roll)->(绕Y,绕Z,绕X)
+## 获取角色朝向(常用)
+![](https://tuchuanglpa.oss-cn-beijing.aliyuncs.com/tuchuanglpa/20250508153911215.png)
+# 11.安全检查
+
+
+| 写法                       | 作用                       |
+| ------------------------ | ------------------------ |
+| `check(ControlledPawn);` | 如果是空指针，会**崩溃报错（断言失败）**   |
+| `if (ControlledPawn)`    | 如果是空指针，**什么也不做**，安全退出  ✅ |
+
+### ✅ 为什么不用 `check()`？
+
+* 游戏运行时可能出现 `GetPawn()` 为空（比如刚开始没有控制 Pawn）
+* 如果你断言它一定不为空，**一旦为空就直接崩溃**
+* `if` 是更**稳健**、更**容错**的写法
+
+---
+
+#  12. `GetPawn()`和 `GetPawn<APawn>()`？
+
+```cpp
+APawn* ControlledPawn = GetPawn();        // ✅ 正确
+APawn* ControlledPawn = GetPawn<APawn>(); // ✅ 也是正确（UE5新写法）
+```
+
+这两种写法都是可以的，区别如下：
+
+| 写法                 | 是否推荐                   | 说明 |
+| ------------------ | ---------------------- | -- |
+| `GetPawn()`        | ✅ 常规写法，返回 `APawn*`     |    |
+| `GetPawn<APawn>()` | ✅ 更现代、模板安全，**多用于子类转换** |    |
+
+### 🧠 用途区别：
+
+* `GetPawn()`：返回当前控制的 Pawn（你自己知道它类型是 `APawn`）
+* `GetPawn<AMyCustomCharacter>()`：**可以直接返回你自定义的子类指针，省去 `Cast`**
+
+# 13. Run & Debug
+
+
+| 功能     | Run ▶️      | Debug 🐞            |
+| ------ | ----------- | ------------------- |
+| 启动方式   | 快速启动，不附加调试器 | 启动 + 附加调试器          |
+| 是否能打断点 | ❌ 否（断点不生效）  | ✅ 是（断点、变量、堆栈都可用）    |
+| 使用场景   | 日常运行、调试蓝图   | 调试 C++ Bug、逻辑、崩溃跟踪等 |
+| 启动速度   | 较快          | 略慢（因附加调试器）          |
+
+# 14. 虚函数 & 纯虚函数 & 抽象类 & 接口
+
+---
+
+## ✅ 1. **虚函数（virtual function）**
+
+```cpp
+class Base {
+public:
+    virtual void Foo() {
+        cout << "Base Foo" << endl;
+    }
+};
+```
+
+### 含义：
+
+* 虚函数支持**多态**（运行时绑定）
+* 父类指针或引用调用时，**会执行子类的重写版本**
+
+```cpp
+class Child : public Base {
+public:
+    void Foo() override {
+        cout << "Child Foo" << endl;
+    }
+};
+
+Base* b = new Child();
+b->Foo();  // 输出 "Child Foo"
+```
+
+---
+
+## ✅ 2. **纯虚函数（pure virtual function）**
+
+```cpp
+class IAnimal {
+public:
+    virtual void Speak() = 0;  // 纯虚函数
+};
+```
+
+### 含义：
+
+* `= 0` 表示**没有默认实现**
+* 子类**必须重写**这个函数
+* 类中**有纯虚函数的类，叫做抽象类**
+
+---
+
+## ✅ 3. **抽象类（abstract class）**
+
+```cpp
+class IAnimal {
+public:
+    virtual void Speak() = 0;  // 没有实现
+};
+
+IAnimal a;  // ❌ 错误：抽象类不能实例化
+```
+
+### 特点：
+
+* 不能创建对象（`IAnimal a;` ❌）
+* 只能作为**接口或基类**使用
+
+---
+
+## ✅ 4. **接口（interface）**
+
+在 C++ 中没有关键字 `interface`，但通过**抽象类 + 全部是纯虚函数**的写法模拟接口：
+
+```cpp
+class IHighlightable {
+public:
+    virtual void HighlightActor() = 0;  // 接口函数
+};
+```
+
+任何类只要继承它并实现函数，就等于**实现了接口**。
+
+---
+
+## 🔁 对比总结：
+
+| 名称     | 写法                        | 是否必须实现 | 是否能实例化 | 主要作用      |
+| ------ | ------------------------- | ------ | ------ | --------- |
+| 虚函数(有默认实现)    | `virtual void Foo()`      | ❌ 可选   | ✅ 可以   | 支持多态      |
+| 纯虚函数(无默认实现)   | `virtual void Foo() = 0;` | ✅ 必须   | ❌ 不行   | 定义接口、强制实现 |
+| 抽象类    | 含有纯虚函数的类                  | -      | ❌ 不行   | 接口或基类     |
+| 接口（模拟） | 抽象类 + 全部纯虚函数              | ✅ 必须   | ❌ 不行   | 明确行为规范    |
+
