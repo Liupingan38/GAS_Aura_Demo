@@ -720,3 +720,225 @@ GAS 的服务器权威模式 + 结构化属性系统：
 
 > “GAS 在多人联机下的最大优势是：提供完整的网络同步框架，包括属性复制、技能触发、客户端预测与服务端权威执行，大大减少了开发者手动处理 RPC 和作弊防护的复杂度。”
 
+# 21. GAS::Ability Task
+非常好，这两个问题都与 **Unreal Engine 的 Gameplay Ability System（GAS）** 密切相关，尤其是在实现技能逻辑时，**Ability Task 是核心工具**。我们来逐个解释：
+
+---
+
+## ✅ 一、异步任务（Async Task）是啥？
+
+**异步任务**就是一种**不会立即返回结果、而是在“某个事件完成后”触发回调的操作**。
+
+### 🔧 在 UE/GAS 中表现为：
+
+* 等待动画播放完成
+* 等待蒙太奇中断或结束
+* 等待输入释放
+* 等待延迟、冷却、Tag添加等
+
+这些过程都需要“监听”，不能阻塞主线程 —— 就属于**异步任务**。
+
+---
+
+## ✅ 二、Ability Task 是啥？有什么用？
+
+**Ability Task** 是 GAS 中用于管理异步事件的**专用工具类**，它继承自：
+
+```cpp
+UGameplayTask → UAbilityTask
+```
+
+### 📦 作用：
+
+> ✅ 让你在 Ability（GA）中轻松处理异步行为，比如：
+>
+> * 播放动画
+> * 等待玩家输入
+> * 等待网络同步
+> * 等待 Gameplay Event
+> * 等待特定时间、Tag、生效效果等
+
+---
+
+### 🔧 常见的 AbilityTask 示例：
+
+| 类名                                | 作用                         |
+| --------------------------------- | -------------------------- |
+| `UAbilityTask_WaitTargetData`     | 等待玩家选中目标（例如选地释放）           |
+| `UAbilityTask_WaitGameplayEvent`  | 等待 Gameplay Event（如攻击命中触发） |
+| `UAbilityTask_PlayMontageAndWait` | 播放动画蒙太奇并等待其结束              |
+| `UAbilityTask_WaitInputPress`     | 等待玩家按下技能键                  |
+| `UAbilityTask_WaitDelay`          | 等待一段时间再执行（例如技能延迟生效）        |
+
+---
+
+## 🧠 举个例子（动画播放并等待）
+
+```cpp
+UAbilityTask_PlayMontageAndWait* Task = 
+    UAbilityTask_PlayMontageAndWait::CreatePlayMontageAndWaitProxy(
+        this, "Attack", Montage, 1.0f
+    );
+
+Task->OnCompleted.AddDynamic(this, &UMyGA::OnMontageFinished);
+Task->ReadyForActivation();
+```
+
+🔹 上述代码表示：
+
+* 播放一个攻击动画
+* 等动画播放完才继续走后续逻辑（如造成伤害）
+
+---
+
+## ✅ 总结一句话（面试可用）：
+
+> “AbilityTask 是 GAS 中专门处理异步事件的工具类，它简化了如动画播放、目标选取、输入监听等异步逻辑的实现，并允许我们通过事件回调在操作完成后再继续能力流程。”
+
+# 22.NetUpdateFrequency
+
+```cpp
+NetUpdateFrequency = 100.f;
+```
+
+是设置一个 **Actor 在网络中的更新频率**，单位是 **Hz（次/秒）**。
+
+---
+
+## ✅ 解释：
+
+* `NetUpdateFrequency` 是 Unreal Engine 中用于控制网络同步频率的属性
+* 它表示：**每秒向客户端发送 Actor 的属性/状态更新的次数**
+
+---
+
+## 🚦 适用场景：
+
+| 对象类型   | 建议值        | 原因              |
+| ------ | ---------- | --------------- |
+| 角色/玩家  | 50\~100 Hz | 移动频繁，动画同步要求高    |
+| 投掷物/子弹 | 20\~60 Hz  | 需要较快同步位置，但生命周期短 |
+| 门、机关   | 1\~10 Hz   | 状态变化不频繁，低频足够    |
+
+---
+
+## ⚠️ 注意：
+
+* 更高的频率 → 更**实时**，但**网络开销大**
+* UE 还会结合 `MinNetUpdateFrequency` 和 `bNetUseOwnerRelevancy` 等参数优化同步
+
+---
+
+## ✅ 面试一句话总结：
+
+> "`NetUpdateFrequency` 控制 Actor 每秒同步到客户端的次数，值越高越实时，但开销越大，通常用于角色或需要频繁同步的动态对象。"
+
+# 23.GAS in Multiplayer
+![](https://tuchuanglpa.oss-cn-beijing.aliyuncs.com/tuchuanglpa/20250510150449819.png)
+
+这张图说明了 **GAS（Gameplay Ability System）在多人联机（Multiplayer）中的工作模型和架构原则**，尤其强调了“**服务器的权威性（Server Authority）**”这个关键点。
+
+下面我将对图中内容进行**详细扩展解读**：
+
+---
+
+## ✅ 一、多人网络架构模型（图左）
+
+### 1. 服务器（Server）
+
+* 在游戏中维护“权威状态”（Authoritative State）
+* 所有**重要决策逻辑都在服务器端执行**
+* 所有客户端都连接并同步到它
+
+### 2. 客户端（Clients）
+
+* 客户端可以**预测操作**（如输入响应、动画播放）
+* 但实际决定如伤害、生效、冷却等必须交由服务器处理
+
+图中显示了三个客户端：
+
+* `Client 0`
+* `Client 1`
+* `Client 2`
+
+他们都从 `Server` 获取最新的游戏状态或将操作请求发往服务器。
+
+---
+
+## ✅ 二、服务端类型（图右上）
+
+### 🔸 Dedicated Server（专用服务器）
+
+* 没有玩家
+* 没有界面（不渲染画面）
+* 运行在数据中心或独立主机上
+* 最常用于正式发布游戏的多人模式
+
+### 🔸 Listen Server（监听服务器）
+
+* 本地玩家即为**服务端 + 客户端**
+* 拥有“主机优势”：本地操作无延迟
+* 适合小型/局域网测试或对战
+
+---
+
+## ✅ 三、GAS 如何依赖这一架构？
+
+GAS 在多人联机中的设计 **完全围绕“服务器为权威”展开**：
+
+| 机制    | GAS 实现方式                                        |
+| ----- | ----------------------------------------------- |
+| 技能激活  | Client 发请求 → Server 校验 → 正式激活（通过 RPC）           |
+| 属性同步  | 属性系统（AttributeSet）仅服务端修改 → 自动通过 `replicated` 推送 |
+| 效果应用  | GameplayEffect 只能由服务端发起应用                       |
+| 客户端预测 | 通过 `PredictionKey` + 预测窗口机制，提升响应性               |
+
+---
+
+## ✅ 一句话总结：
+
+> Unreal 的 GAS 在多人游戏中以“服务端为权威”为核心原则，客户端仅做输入与预测，所有重要行为（技能释放、生效、伤害、冷却）必须由服务器决定并同步，以保证公平、安全与一致性。
+
+# 24.Replication
+![](https://tuchuanglpa.oss-cn-beijing.aliyuncs.com/tuchuanglpa/20250510150904418.png)
+这张图进一步深入讲解了 GAS 在多人联机（Multiplayer）中的**变量同步（Replication）机制**，重点是解释：**哪些变量在哪里修改？如何同步？为什么不能直接改？**
+
+---
+
+## ✅ 一、整体架构回顾
+
+>- **服务端（Server）为权威**：**拥有唯一 GameMode**，并控制所有变量（PlayerController、PlayerState、Pawn）的真实值,没有HUD或Widgets
+>- **客户端（Client 0\~2）**： 拥有**自身**PlayerController的复制，**所有**PlayerState、Pawn的复制，拥有唯一自身的HUD或widgets
+
+## ✅ 二、变量如何同步？
+
+>- 每个客户端都拥有 P\_2 的一个“镜像版本”，**但只有服务端的是“真身”**
+>- ❌ 客户端直接修改 replicated 变量是无效的（且是非法的）
+>-  **所有关键变量的修改必须发生在服务端，客户端只能读取已同步的值。**
+
+
+---
+
+## ✅ 三、与 GAS 的关系？
+
+GAS 的属性系统（AttributeSet）正是依赖这个机制：
+
+| 操作                           | 发生在哪                 |
+| ---------------------------- | -------------------- |
+| 应用 GameplayEffect，造成伤害       | Server               |
+| 修改 Attribute（如 Health）       | Server               |
+| 同步属性变化（Replicate Attributes） | Server → Client 自动复制 |
+| Widget 获取变量显示                | Client 读取复制值         |
+
+---
+
+## ✅ 四、HUD 与 Widget 是怎么更新的？
+
+每个客户端的 UI（Widget）会从本地副本读取数据：
+
+```cpp
+P_2->GetAttributeSet()->GetHealth();  // 这时是读取 replicated 值
+```
+
+通过绑定委托（OnRep\_）、监听 GAS 事件、或 Widget 更新 Tick 来完成 UI 更新。
+
