@@ -15,10 +15,9 @@ class GAS_AURA_DEMO_API AAuraEnemy : public AAuraCharacterBase,public IEnemyInte
 {
 	GENERATED_BODY()
 public:
+	AAuraEnemy();
 	virtual void Highlight() override;
 	virtual void UnHighlight() override;
-
-	UPROPERTY(BlueprintReadOnly)
-	bool bHighlighted;
+	
 	
 };

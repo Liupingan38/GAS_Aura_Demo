@@ -380,3 +380,343 @@ public:
 | 抽象类    | 含有纯虚函数的类                  | -      | ❌ 不行   | 接口或基类     |
 | 接口（模拟） | 抽象类 + 全部纯虚函数              | ✅ 必须   | ❌ 不行   | 明确行为规范    |
 
+# 15.`TScriptInterface<T>`
+
+```cpp
+TScriptInterface<IEnemyInterface> LastActor;
+```
+
+是 Unreal Engine 提供的用于**接口访问**的特殊包装类型，它的作用是：
+
+> ✅ 允许你在 C++ 中**安全地存储并调用蓝图/C++接口的对象**
+
+---
+
+## ✅ 为什么不用普通指针（如 `IEnemyInterface*` 或 `AActor*`）？
+
+因为 UE 的接口类有两个特点：
+
+1. UE 接口类继承自 `UInterface`（不是普通 C++ 接口）
+2. 一个类实现接口时，**需要同时继承 `UInterface` 和实现 `IYourInterface`**
+
+直接用 `IEnemyInterface*` 访问接口函数在运行时容易出现失败或崩溃（因为 UObject 和接口地址不是同一个）。
+
+---
+
+## ✅ `TScriptInterface<T>` 是什么？
+
+它是一个 **模板封装类型**，可以安全存储：
+
+* 指向 `UObject` 的对象（比如 Actor）
+* 并能自动获取并调用它的接口函数
+
+---
+
+## ✅ 它内部包含两个指针：
+
+```cpp
+struct TScriptInterface
+{
+    UObject* Object;         // 指向实现接口的 UObject
+    void* InterfacePointer;  // 指向接口函数表
+};
+```
+
+这样你就可以直接调用接口函数：
+
+```cpp
+if (LastActor) {
+    LastActor->HighlightActor();  // 调用接口中的函数
+}
+```
+
+
+你可以把任何实现了 `UEnemyInterface` 的 Actor（如敌人）赋值给 `LastActor`，并**安全调用接口方法**。
+
+---
+
+## ✅ 总结
+
+| 写法                                  | 含义                              |
+| ----------------------------------- | ------------------------------- |
+| `TScriptInterface<IEnemyInterface>` | 存放实现接口的 Actor + 安全调用接口方法        |
+| 不用 `IEnemyInterface*`               | 因为 UE 接口有双重继承，裸指针无法保证安全调用       |
+| 蓝图兼容                                | 支持 BlueprintInterface，且能被蓝图赋值使用 |
+
+非常好的问题！你可以这样赋值的原因在于：`TScriptInterface<IEnemyInterface>` 是 Unreal 引擎专为 **UInterface 接口系统设计的封装类**，它支持智能赋值和类型转换，下面我来**简明扼要**解释为什么这些赋值都成立：
+
+---
+
+## ✅ 你写的代码
+
+```cpp
+TScriptInterface<IEnemyInterface> LastActor;
+TScriptInterface<IEnemyInterface> ThisActor;
+
+LastActor = ThisActor;                          // ✅ 拷贝赋值，类型相同
+ThisActor = CursorHit.GetActor();              // ✅ 隐式转换（前提：GetActor() 实现了接口）
+```
+
+---
+
+## ✅ 为什么可以这样赋值？
+
+### 🔹 1. `TScriptInterface<IEnemyInterface>` 本质上是结构体封装
+
+```cpp
+template<class InterfaceType>
+class TScriptInterface
+{
+    UObject* Object;              // 指向 UObject 对象
+    InterfaceType* Interface;    // 指向接口（通常是 IEnemyInterface*）
+};
+```
+
+它内部自动处理了：
+
+* 从 `AActor*` 获取接口指针（调用 `Cast<IEnemyInterface>()`）
+* 判断该对象是否实现了接口
+
+---
+
+### 🔹 2. `ThisActor = CursorHit.GetActor();`
+
+这是**从 `AActor*`（或 `UObject*`）赋值给接口类型**，能这样写的前提是：
+
+* `CursorHit.GetActor()` 返回的是 `AActor*`
+* 该 `AActor` 的类实现了 `UEnemyInterface`
+
+UE 源码中重载了赋值操作符，使你能这样写：
+
+```cpp
+TScriptInterface<IEnemyInterface>::operator=(UObject* InObject)
+```
+
+它会自动：
+
+* 设置内部的 `Object` 指针
+* 尝试从 `InObject` 提取接口指针（运行时验证）
+
+---
+
+## ✅ 总结
+
+| 表达式                                 | 是否允许 | 原因                  |
+| ----------------------------------- | ---- | -------------------             |
+| `ThisActor = CursorHit.GetActor();` | ✅ 是  | 自动从 `AActor*` 解析接口  |
+| `TScriptInterface<T> = UObject*`    | ✅ 是  | 引擎重载了赋值运算符，自动解析接口指针 |
+
+# 16.ECC/ECR
+```cpp
+GetMesh()->SetCollisionResponseToChannel(ECC_Visibility, ECR_Block); // 设置可视为阻挡
+```
+
+## ✅ 解释这行代码含义：
+
+| 部分                                | 含义                                              |
+| --------------------------------- | ----------------------------------------------- |
+| `GetMesh()`                       | 获取当前 Actor 的 Mesh 组件（通常是 SkeletalMeshComponent） |
+| `SetCollisionResponseToChannel()` | 设置对某个通道（Channel）的响应方式                           |
+| `ECC_Visibility`                  | 通道名，表示**可见性通道**，用于射线检测（如鼠标点选、LineTrace）         |
+| `ECR_Block`                       | 响应方式，表示“**阻挡该通道**”                              |
+
+---
+
+## 📌 效果说明：
+
+> **让角色的 Mesh 对 `Visibility` 通道产生“阻挡”，从而可以被 `LineTraceByChannel()` 击中。**
+
+例如：鼠标点选角色、LineTrace 查找敌人、射线检测都常用 `ECC_Visibility`。
+
+---
+
+## ✅ Unreal 的命名规则说明（以缩写命名为主）：
+
+| 缩写     | 代表含义                                  | 示例                           |
+| ------ | ------------------------------------- | ---------------------------- |
+| `ECC_` | **E**ngine **C**ollision **C**hannel  | `ECC_Visibility`, `ECC_Pawn` |
+| `ECR_` | **E**ngine **C**ollision **R**esponse | `ECR_Block`, `ECR_Ignore`    |
+
+---
+
+## ✅ 如何选择函数来调用？
+
+### 🎯 函数选择指南（SkeletalMeshComponent/StaticMeshComponent 常用）：
+
+| 场景                          | 使用函数                                  |
+| --------------------------- | ------------------------------------- |
+| 设置整体碰撞启用                    | `SetCollisionEnabled(...)`            |
+| 设置对象通道（Pawn/WorldDynamic 等） | `SetCollisionObjectType(...)`         |
+| 设置对某个通道的响应方式（单个）            | `SetCollisionResponseToChannel(...)`  |
+| 设置所有通道的默认响应方式               | `SetCollisionResponseToAllChannels()` |
+| 设置多个通道响应                    | `SetCollisionResponseToChannels(...)` |
+
+# 17.Custom Depth & Stencil
+
+在 Unreal Engine 中，**Custom Depth** 和 **Stencil** 是用于实现高级渲染效果（如描边、高亮、X 光等）的两个关键缓冲区。
+
+---
+
+## ✅ 1. Custom Depth 是什么？
+
+**Custom Depth（自定义深度）** 是一张额外的深度图，用来：
+
+* 储存**特定物体**的深度信息（非整个场景）
+* 可在**后处理材质**中读取，用于比较和处理
+* 不影响主渲染，只用于自定义效果
+
+### 📌 常用功能：
+
+* 描边
+* 穿透高亮
+* “透视墙体看敌人”效果（X-ray）
+
+---
+
+## ✅ 2. Stencil 是什么？
+
+**Stencil（模板缓冲）** 是一个 **8 位整数缓冲区**，用于：
+
+* 给每个物体**打标记（0\~255）**
+* 在后处理材质中读取 `CustomStencil` 值，实现**分组控制**
+
+### 📌 常用功能：
+
+* 区分哪些对象需要特殊处理
+* 多组描边（敌人红色、任务物品蓝色）
+* 更精细控制哪些写入 Custom Depth 的物体被处理
+
+---
+
+## ✅ 二者配合使用（常见流程）：
+
+| 步骤 | 操作                                     | 使用目的               |
+| -- | -------------------------------------- | ------------------ |
+| 1  | 启用 Render CustomDepth Pass             | 写入 Custom Depth 纹理 |
+| 2  | 设置 Custom Stencil Value（如 1）           | 标记敌人、任务物体等         |
+| 3  | 在材质中使用 SceneTexture\:CustomDepth       | 检测深度差做边缘检测         |
+| 4  | 使用 SceneTexture\:CustomStencil + If 判断 | 只对 Stencil=1 的物体生效 |
+
+# 18. 角色描边效果的实现
+
+### 🧩 一、基本原理说明：
+
+> “UE5 中常见的描边实现方式是通过 `CustomDepth` 和 `CustomStencil` 配合后处理材质实现的。核心思想是：将需要描边的物体写入一张额外的深度缓冲，再在后处理阶段检测其边缘像素并绘制描边颜色。”
+
+---
+
+### ⚙️ 二、实现步骤简述：
+
+#### 1. 启用项目设置：
+
+> 在项目设置（Project Settings）中启用 Custom Depth 和 Custom Stencil 通道：
+
+* `CustomDepth-Stencil Pass`: Enabled with Stencil
+
+#### 2. 设置需要描边的 Mesh：
+
+> 对目标角色的 Mesh 启用自定义渲染：
+
+```cpp
+Mesh->SetRenderCustomDepth(true);
+Mesh->SetCustomDepthStencilValue(1); // 设置组别
+```
+
+#### 3. 创建后处理材质：
+
+> 创建一个 `Material`，类型设为 **Post Process**，使用节点如下：
+
+* `SceneTexture: CustomDepth`：采样深度
+* `SceneTexture: CustomStencil`：用于过滤特定物体
+* `SceneTexture: PostProcessInput0`：原始画面
+* `TexCoord` 偏移多个方向采样 → 比较深度 → 判定边缘
+* `If` + `Lerp` 实现边缘上色逻辑
+
+#### 4. 应用后处理材质：
+
+> 在关卡中添加 PostProcessVolume：
+
+* `Infinite Extent` 设置为 true（全局有效）
+* 在 Post Process Materials 中添加材质实例
+
+---
+
+### 🎨 三、可扩展性（展示深度理解）：
+
+> * 可以通过 `CustomStencil` 实现不同角色/物品使用不同描边色
+> * 支持运行时启用/禁用描边（通过代码控制 `SetRenderCustomDepth`）
+> * 可调整采样距离控制描边粗细
+> * 与 UI、锁定系统结合，做出互动高亮反馈
+
+---
+
+### 💬 四、（可选）总结语句：
+
+> “这种方式性能开销低、通用性强，是项目中常用的描边方案，也适合扩展到 X 光透视、目标高亮等效果。”
+
+# 19. GAS
+![](https://tuchuanglpa.oss-cn-beijing.aliyuncs.com/tuchuanglpa/20250509184118612.png)
+
+![](https://tuchuanglpa.oss-cn-beijing.aliyuncs.com/tuchuanglpa/20250509201413946.png)
+![](https://tuchuanglpa.oss-cn-beijing.aliyuncs.com/tuchuanglpa/20250509202105091.png)
+![](https://tuchuanglpa.oss-cn-beijing.aliyuncs.com/tuchuanglpa/20250509211117256.png)
+# 20. GAS 多人联机优势（完全复制？）
+Gameplay Ability System（GAS）在 **网络联机（Multiplayer）** 开发中具有以下 **显著优势**，是它被广泛应用于 UE 多人游戏项目的核心原因：
+
+---
+
+## ✅ 核心优势一览
+
+| 优势                      | 说明                                                  |
+| ----------------------- | --------------------------------------------------- |
+| ✅ **自动支持网络同步**          | GAS 自带 RPC、属性同步、能力同步机制（基于 `AbilitySystemComponent`） |
+| ✅ **客户端预测（Prediction）** | 减少延迟感，客户端可预测技能行为；失败时自动回滚                            |
+| ✅ **属性复制优化**            | 属性通过 `AttributeSet` 精细同步，避免粗暴的 `replicate all`      |
+| ✅ **服务器权威执行能力**         | 核心逻辑（应用效果、冷却、生效时间等）强制在服务端判定，防止作弊                    |
+| ✅ **支持多玩家/多实体能力管理**     | 每个角色可拥有自己的 ASC（AbilitySystemComponent），独立管理技能和状态    |
+
+---
+
+## 🎮 举个例子：多人战斗场景
+
+假设你有一个技能“冲锋斩”：
+
+* 玩家在客户端按键触发
+* GAS 会先进行 **客户端预测播放动画**
+* 同时向服务器发送请求
+* 服务器校验输入 → 真正调用 `ActivateAbility` → 触发效果（如伤害、击退）
+* **GAS 自动处理**：
+
+  * 效果同步（Gameplay Effect）
+  * 伤害数值广播
+  * Buff 应用状态同步
+  * 技能冷却生效
+
+---
+
+## 📡 与传统手动实现相比
+
+| 对比点        | 手动实现             | GAS 实现                    |
+| ---------- | ---------------- | ------------------------- |
+| 网络同步控制     | 手写 RPC/RepNotify | 自动绑定属性和技能同步逻辑             |
+| 客户端预测      | 需自己处理预测/回滚       | 内置 Prediction Window 支持   |
+| 属性/Buff 管理 | 需手写状态管理系统        | 使用 GameplayEffect 自动管理    |
+| 安全性        | 易被客户端欺骗          | GAS 强制关键逻辑服务端执行           |
+| 扩展性        | 增加新技能需加很多判断      | 只需添加 GA（Gameplay Ability） |
+
+---
+
+## 🔒 安全性方面
+
+GAS 的服务器权威模式 + 结构化属性系统：
+
+* 防止客户端伪造伤害
+* 防止 Buff、冷却作弊
+* 所有效果必须通过服务端 `ApplyGameplayEffectToTarget`
+
+---
+
+## ✅ 总结一句话回答（面试可用）：
+
+> “GAS 在多人联机下的最大优势是：提供完整的网络同步框架，包括属性复制、技能触发、客户端预测与服务端权威执行，大大减少了开发者手动处理 RPC 和作弊防护的复杂度。”
+
