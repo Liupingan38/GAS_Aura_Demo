@@ -942,7 +942,7 @@ P_2->GetAttributeSet()->GetHealth();  // 这时是读取 replicated 值
 
 通过绑定委托（OnRep\_）、监听 GAS 事件、或 Widget 更新 Tick 来完成 UI 更新。
 
-# 25. 
+# 25. Replication Mode
 当然可以。下面我将用通俗易懂的方式，通过**三种典型游戏类型**来举例说明 GAS 的三种 Replication Mode 的使用场景和理由，帮助你建立更具象的理解：
 
 ---
@@ -1014,4 +1014,170 @@ P_2->GetAttributeSet()->GetHealth();  // 这时是读取 replicated 值
 | Full    | 单人游戏，如《塞尔达》；观战模式         | 所有内容完全复制，开发最简单           |
 | Mixed   | MOBA/FPS，如《LOL》《OW》 | 自己完全感知，别人只看到表现，性能与表现兼顾   |
 | Minimal | 大型副本 AI，如《无主之地》怪物   | 效果本地运行，别人只看到燃烧/受伤状态，性能最优 |
+
+# 26.OwnerActor/AvatarActor/
+带有ASC的Actor也被称为ASC的OwnerActor。ASC实际作用的Actor叫作AvatarActor。OwnerActor和AvatarActor可以是同一个Actor，比如MOBA游戏中的野怪。它们也可以是不同的 Actors，比如MOBA游戏中玩家和AI控制的英雄角色，OwnerActor是PlayerState、AvatarActor是HeroCharacter。大部分情况下OwnerActor和AvatarActor可以是角色Actor。不过想像一下你控制的英雄角色死亡然后重生的过程，如果此时要保留死亡前的Attributes或者GameplayEffects，那么最理想的做法是将ASC交给PlayerState。
+
+如果OwnerActor和AvatarActor是不同的Actors，那么两者都需要实现IAbilitySystemInterface， 方便用于获取GAS的数据。这个接口只有一个方法需要被重载UAbilitySystemComponent* GetAbilitySystemComponent() const，此方法将返回ASC。
+
+>- InitAbilityActorInfo设置OwnerActor/AvatarActor分为三种情况，分别需要在Server和Client端（即黑框内函数）中设置：
+>1. **对于玩家控制的角色，ASC存在于Pawn中**，我通常在Pawn的 PossessedBy()方法中完成ASC在服务器端的初始化，在PlayerController的AcknowledgePawn()方法中完成ASC在客户端的初始化。
+>2. **对于玩家控制的角色，ASC存在于PlayerState中**，我通常在Pawn 的PossessedBy() 方法中完成ASC在服务器端的初始化（这一点与上述相同），在 Pawn的 OnRep_PlayerState()方法中完成ASC在客户端的初始化（这将确保PlayerState在客户端已存在）。
+>3. **对于AI控制的角色，ASC存在于Pawn中**，通常在Pawn的 BeginPlay()方法中完成ASC在服务器端和客户端的初始化。
+
+![](https://tuchuanglpa.oss-cn-beijing.aliyuncs.com/tuchuanglpa/20250511154119081.png)
+>- 注意：使用Mixed Replication Mode，OwnerActor 必须是Controller（但本项目不用担心：playState和Pawn（在PossessedBy中）的Owner会自动被设置为Controller）
+![](https://tuchuanglpa.oss-cn-beijing.aliyuncs.com/tuchuanglpa/20250511165356846.png)
+
+# 27.Prediction
+## ✅ 一句话总结（面试可用）：
+
+> “Prediction 是 GAS 用于提升玩家操作响应的机制，客户端会提前执行操作（如播放动画），并等待服务器确认后决定是否保留或回滚，保证手感流畅同时保持网络安全。”
+
+## 🔁 Prediction 的流程简图：
+
+```plaintext
+Client 按键 → 本地预测执行（播放动画等）
+         ↓
+    同时发送激活请求 → Server
+                         ↓
+             Server 判定是否合法
+                         ↓
+                ✅ → 确认并广播同步
+                ❌ → 回滚客户端预测效果
+```
+---
+## ✅ GAS 中常见预测应用：
+| 预测行为     | 类别                                       |
+| -------- | ---------------------------------------- |
+| 播放攻击动画   | `AbilityTask_PlayMontageAndWait` 中支持预测播放 |
+| 技能释放     | `TryActivateAbility` 可开启预测窗口             |
+| 目标选择     | `TargetActor` 支持预测数据同步                   |
+| 属性变化（可选） | 使用 `PredictionKey` 包装属性应用操作              |
+---
+## ⚠️ 注意点：
+* 预测行为只在 **局部客户端可见**，不能直接影响服务器或其他客户端
+* 必须手动管理预测窗口、确认或回滚逻辑
+* GAS 自动支持了很多预测细节（如任务/GE 执行等）
+
+# 28.RepNotify
+
+## ✅ 一句话总结（面试可用）：
+> “RepNotify 是 UE 的变量同步回调机制，用于当客户端接收到服务端同步的变量变化时，自动触发处理逻辑，常用于更新 UI、播放效果等视觉反馈。”
+
+## 🧠 用途：
+* 当客户端接收到 `Health` 的新值时，自动执行 `OnRep_Health()` 函数
+* 通常用于更新 UI、播放动画、触发特效等客户端行为
+---
+
+## 🧪 示例：
+```cpp
+UPROPERTY(ReplicatedUsing = OnRep_Health)
+FGameplayAttributeData Health;
+```
+```cpp
+UFUNCTION()
+void OnRep_Health(const FGameplayAttributeData& OldHealth)
+{
+    // 比如更新 HUD 上的血条显示
+    UpdateHealthBarUI();
+}
+```
+
+# 29.AttributeSet
+>- 在OwnerActor的构造方法中创建的AttributeSet将会**自动注册**到ASC。这一步必须在C++中完成。
+>- Attributes 通常只能被GameplayEffects 修改，因此ASC可以 预测 这个修改。
+>- 一个Attribute 由两个值构成 :一个基值 BaseValue 和一个当前值CurrentValue. 基值BaseValue是属性 Attribute的一个恒值， 而当前值 CurrentValue 是 BaseValue 加上GameplayEffects的临时修改值。
+>- 立即（Instant） GameplayEffects将永久改变BaseValue，而持续（Duration） 和永恒（Infinite） GameplayEffects 将改变CurrentValue。周期性（Periodic ）GameplayEffects像立即（Instant） GameplayEffects一样将改变BaseValue。
+如果Attribute没有受到GameplayEffects的影响时，这两个值其实是相同的。而受到GameplayEffects影响时，如果是一次性的修改，则直接修改的时候BaseValue，CurrentValue也会跟着改变，两个值的结果相同。如果影响是时效性的，比如一段时间内提高移动速度，那么，GameplayEffects修改的是CurrentValue的值。
+
+
+![](https://tuchuanglpa.oss-cn-beijing.aliyuncs.com/tuchuanglpa/20250511192356289.png)
+## 设置属性模板
+![](https://tuchuanglpa.oss-cn-beijing.aliyuncs.com/tuchuanglpa/20250511205008429.png)
+![](https://tuchuanglpa.oss-cn-beijing.aliyuncs.com/tuchuanglpa/20250511205154964.png)
+
+# 30.联机复制
+---
+
+## ✅ 总结（一句话）：
+
+> `GetLifetimeReplicatedProps` 告诉引擎“哪些变量要同步”，而 `OnRep_XXX()` 是当这些变量被同步到客户端后，执行的“后续反应逻辑”。
+
+
+## ✅ 一、`GetLifetimeReplicatedProps` 的作用与原理
+
+### 📌 作用：
+
+告诉 Unreal Engine 哪些变量需要在 **服务器和客户端之间同步（Replicate）**，以及如何同步。
+
+### 🔧 示例中这段代码：
+
+```cpp
+DOREPLIFETIME_CONDITION_NOTIFY(UAttributeSetBase, Health, COND_None, REPNOTIFY_Always);
+```
+
+### ✅ 参数解释：
+
+| 参数                  | 含义                          |
+| ------------------- | --------------------------- |
+| `UAttributeSetBase` | 拥有变量的类名                     |
+| `Health`            | 需要同步的变量                     |
+| `COND_None`         | 同步条件（None = 始终同步）           |
+| `REPNOTIFY_Always`  | 是否触发 `OnRep_Health()`（始终触发） |
+
+### 📌 工作原理：
+
+* 服务端修改 `Health`
+* UE 根据 `DOREPLIFETIME` 注册的规则将新值同步到客户端
+* 如果值发生变化，并且通知条件成立，就触发 `OnRep_Health()`
+
+---
+
+## ✅ 二、`OnRep_Health()` 的作用与原理
+
+### 📌 作用：
+
+在客户端 **接收到服务器同步的变量变化**时，触发回调，用于：
+
+* 更新 UI
+* 播放动画
+* 调用特效等
+
+### 🔧 示例中这段代码：
+
+```cpp
+void UAttributeSetBase::OnRep_Health(const FGameplayAttributeData& OldHealth) const
+{
+    GAMEPLAYATTRIBUTE_REPNOTIFY(UAttributeSetBase, Health, OldHealth);
+}
+```
+
+其中：
+
+```cpp
+GAMEPLAYATTRIBUTE_REPNOTIFY(...)
+```
+
+是 GAS 提供的宏，内部会触发：
+
+* `OnHealthChanged()` 委托
+* 更新绑定的监听器（如 UI 蓝图、Widget）
+
+---
+
+## 🔁 二者的联动流程图如下：
+
+```plaintext
+服务端：Health 被 GE 修改
+  ↓
+调用 GetLifetimeReplicatedProps 注册的规则
+  ↓
+变量通过网络复制到客户端
+  ↓
+客户端触发 OnRep_Health()
+  ↓
+更新 UI / 动画 / 特效
+```
+
 
