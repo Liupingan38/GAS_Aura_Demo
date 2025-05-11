@@ -16,8 +16,13 @@ class GAS_AURA_DEMO_API AAuraEnemy : public AAuraCharacterBase,public IEnemyInte
 	GENERATED_BODY()
 public:
 	AAuraEnemy();
+
+	//~ Begin Enemy Interface
 	virtual void Highlight() override;
 	virtual void UnHighlight() override;
-	
+	//~ End Enemy Interface
+
+protected:
+	virtual void BeginPlay() override;
 	
 };
