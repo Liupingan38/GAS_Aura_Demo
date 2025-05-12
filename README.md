@@ -153,6 +153,14 @@ TObjectPtr<UInputMappingContext> AuraContext;
 | 作为指针 `UInputMappingContext*`、或 `TObjectPtr<UInputMappingContext>` | ✅ 可以                         | 不需要知道类型大小    |
 | 作为值类型（直接构造对象）`UInputMappingContext obj;`                          | ❌ 不行                         | 编译器必须知道类完整定义 |
 | 使用类成员函数或访问字段 `AuraContext->SomeFunction()`                        | ❌ 不行（在 .cpp 中必须 include 完整头） |              |
+#### 常用：
+| 情况                            | 建议方式                    |
+| ----------------------------- | ----------------------- |
+| 用到类的成员变量/继承基类                 | `#include`              |
+| 只用到指针/引用（函数参数、成员）             | 前向声明 + `.cpp` 中 include |
+| 用到了模板类（如 `TArray<FMyStruct>`） | `.h` 中需要 `#include` 定义  |
+| 蓝图类、控件类、组件类（如 `UUserWidget`）  | **尽量只 forward declare** |
+
 
 # 7.bReplicated
 ![](https://tuchuanglpa.oss-cn-beijing.aliyuncs.com/tuchuanglpa/20250506105559866.png)
@@ -1096,6 +1104,7 @@ void OnRep_Health(const FGameplayAttributeData& OldHealth)
 ## 设置属性模板
 ![](https://tuchuanglpa.oss-cn-beijing.aliyuncs.com/tuchuanglpa/20250511205008429.png)
 ![](https://tuchuanglpa.oss-cn-beijing.aliyuncs.com/tuchuanglpa/20250511205154964.png)
+![](https://tuchuanglpa.oss-cn-beijing.aliyuncs.com/tuchuanglpa/20250512193233967.png)
 
 # 30.联机复制
 ---
@@ -1180,4 +1189,35 @@ GAMEPLAYATTRIBUTE_REPNOTIFY(...)
 更新 UI / 动画 / 特效
 ```
 
+# 31.`ATTRIBUTE_ACCESSORS`宏封装
+## ✅ 宏总览：`ATTRIBUTE_ACCESSORS`
 
+```cpp
+#define ATTRIBUTE_ACCESSORS(ClassName, PropertyName) \
+    GAMEPLAYATTRIBUTE_PROPERTY_GETTER(ClassName, PropertyName) \
+    GAMEPLAYATTRIBUTE_VALUE_GETTER(PropertyName) \
+    GAMEPLAYATTRIBUTE_VALUE_SETTER(PropertyName) \
+    GAMEPLAYATTRIBUTE_VALUE_INITTER(PropertyName)
+```
+
+它会自动展开为以下四个宏，四个宏又分别展开为四个对应的函数：
+```cpp
+static FGameplayAttribute GetHealthAttribute();
+float GetHealth() const;
+void SetHealth(float NewVal);
+void InitHealth(float NewVal);
+```
+---
+
+## ✅ 总结一句话：
+
+> `ATTRIBUTE_ACCESSORS` 宏组提供了一整套对 GAS 属性的统一访问接口，包括：获取属性标识、读取当前值、设置值、初始化值，用于提升 GAS 开发效率并统一风格。
+---
+
+## 🎯 背景：为什么写这些宏？
+
+在 GAS 中，我们经常需要重复写以上四个函数，而 GAS 提供了宏（Macro）来帮你统一自动生成这些函数，避免手动重复代码。
+
+# Debug1.PlayerState为nullptr
+#### 原因：场景内已有角色
+正常情况下通过玩家出生点生成才是正确的做法，当然如果偏要在场景里面放也行，你放进去的角色，在细节面板里把Pawn分类下的自动控制玩家设置一下就行了，如果设置的是玩家0就只会有一个你操控的角色，设置成其他就会出现另一个角色
