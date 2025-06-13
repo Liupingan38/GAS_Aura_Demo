@@ -1230,7 +1230,7 @@ void InitHealth(float NewVal);
 正常情况下通过玩家出生点生成才是正确的做法，当然如果偏要在场景里面放也行，你放进去的角色，在细节面板里把Pawn分类下的自动控制玩家设置一下就行了，如果设置的是玩家0就只会有一个你操控的角色，设置成其他就会出现另一个角色
 
 
-# 动态委托系统
+# 32. 动态委托系统
 
 ## 🧠 一句话理解
 
@@ -1292,7 +1292,7 @@ void OnOverlap(UPrimitiveComponent* OverlappedComponent, AActor* OtherActor,
 | `OnDestroyed`              | Actor 被销毁时调用    |
 | `OnClicked` / `OnReleased` | UI 或 Actor 被点击时 |
 
-# UFUNCTION()
+# 33. UFUNCTION()
 
 `UFUNCTION()` 是 Unreal Engine（UE）中用于标记函数的宏，它的作用是让函数**参与 UE 的反射系统（Reflection System）**，从而支持：
 
@@ -1321,8 +1321,76 @@ void OnOverlap(UPrimitiveComponent* OverlappedComponent, AActor* OtherActor,
 | **Unreliable**                  | 网络调用可丢弃（更快）                   | 
 | **Category**                    | 设置蓝图中函数的分类                    | 
 
+# 34.UCLASS 和 UPROPERTY
 
-# 反射系统
+
+## 🔶 一、`UCLASS()` 的常用参数
+
+`UCLASS()` 是用于声明一个类为 UE 可反射的类（必须继承自 `UObject` 或其子类，如 `AActor`、`UActorComponent` 等）。
+
+### 🔹 常用参数列表
+
+| 参数                   | 说明                                    |
+| -------------------- | ------------------------------------- |
+| `Blueprintable`      | 允许从该 C++ 类派生蓝图                        |
+| `BlueprintType`      | 允许该类在蓝图中作为变量类型                        |
+| `NotBlueprintable`   | 禁止从该类派生蓝图                             |
+| `EditInlineNew`      | 支持在编辑器中内联创建此类的实例（通常用于 UObject 属性）     |
+| `Abstract`           | 声明该类为抽象类，不能实例化                        |
+| `Config=xxx`         | 指定配置文件类别，变量会自动绑定配置文件（如 `Config=Game`） |
+| `DefaultToInstanced` | 默认情况下该类的对象会以 Instanced（实例化）方式创建       |
+| `Within=OuterClass`  | 指定该类只能在特定 Outer 类中创建                  |
+
+
+
+## 🔷 二、`UPROPERTY()` 的常用参数
+
+`UPROPERTY()` 用于声明一个变量可以被反射系统识别，从而支持蓝图编辑、网络复制、垃圾回收等。
+
+### 🔹 1. 蓝图相关参数
+
+| 参数                   | 说明                         |
+| -------------------- | -------------------------- |
+| `BlueprintReadOnly`  | 蓝图中只读                      |
+| `BlueprintReadWrite` | 蓝图中可读写                     |
+| `VisibleAnywhere`    | 编辑器可见，但不可编辑                |
+| `EditAnywhere`       | 编辑器中可见且可编辑（任意实例）           |
+| `EditDefaultsOnly`   | 只能在默认对象上编辑（比如蓝图 Class 默认值） |
+| `EditInstanceOnly`   | 只能在实例上编辑（运行时实例）            |
+| `Category="xxx"`     | 设置蓝图变量分类                   |
+
+### 🔹 2. 编辑器行为
+
+| 参数                                          | 说明                    |
+| ------------------------------------------- | --------------------- |
+| `meta = (ClampMin = "0", ClampMax = "100")` | 设置浮点变量可调范围            |
+| `DisplayName = "Health Points"`             | 编辑器中显示的变量名            |
+| `ToolTip = "This is the player's health"`   | 鼠标悬浮提示                |
+| `ExposeOnSpawn`                             | 支持在 SpawnActor 时设置该属性 |
+
+### 🔹 3. 实例与内联相关
+
+| 参数           | 说明                             |
+| ------------ | ------------------------------ |
+| `Instanced`  | 该 UObject 属性应实例化为独立对象（而不是指针共享） |
+| `EditInline` | 在编辑器中支持内联编辑该 UObject           |
+| `Transient`  | 不会保存到磁盘（关卡或序列化时忽略）             |
+| `Config`     | 与配置文件联动，变量值自动从 `.ini` 加载       |
+
+### 🔹 4. 网络复制与 GC
+
+| 参数                               | 说明                   |
+| -------------------------------- | -------------------- |
+| `Replicated`                     | 网络中此变量会被复制到客户端       |
+| `ReplicatedUsing=OnRep_Function` | 复制后调用的回调函数           |
+| `SaveGame`                       | 会被保存到 SaveGame 文件中   |
+| `VisibleInstanceOnly`            | 实例可见但不可修改            |
+| `AdvancedDisplay`                | 编辑器默认隐藏，需要点开“高级”才能看到 |
+
+
+
+
+# 34. 反射系统
 
 Unreal Engine（UE）的\*\*反射系统（Reflection System）\*\*是整个引擎最核心的机制之一，支撑了蓝图（Blueprint）、编辑器属性暴露、网络复制、GC（垃圾回收）、动态委托等一整套生态。
 
@@ -1443,4 +1511,91 @@ UE 的反射系统只适用于继承自 `UObject` 的类。
 | 生命周期管理 | 垃圾回收依赖 `UPROPERTY()`                          |
 | 网络同步   | 属性复制和远程过程调用（RPC）                              |
 | 数据序列化  | 存档/读取 SaveGame，自动保存变量                         |
+
+# 35. const_cast
+
+`const_cast` 是 C++ 中的一个类型转换运算符，它的**唯一作用**就是：
+
+> **移除对象的 `const` 或 `volatile` 限定符**，从而使其可以被修改（或用于需要非 `const` 的场景）。（**你得自己保证这样做是安全的**）。
+
+
+
+## 🧠 对比其他类型转换
+
+| 转换                 | 用途                      | 是否安全          | 是否运行时检查 |
+| ------------------ | ----------------------- | ------------- | ------- |
+| `static_cast`      | 常规类型转换                  | 安全（编译时检查）     | ✅       |
+| `reinterpret_cast` | 强制转换（低层次）               | 极不安全          | ❌       |
+| `dynamic_cast`     | RTTI运行时类型转换（通常用于多态类）    | 安全（失败返回 null） | ✅       |
+| `const_cast`       | 去掉 `const` 或 `volatile` | ⚠️ 危险         | ❌       |
+
+# 36.static_class()
+
+
+
+## 🧠 一句话回答：
+
+> `StaticClass()` 返回的是 **这个类的类型信息（`UClass*`）**，用于告诉引擎你想要获取哪一类的 `AttributeSet`。
+
+```cpp
+const UAuraAttributeSet* AuraAttributeSet =
+	Cast<UAuraAttributeSet>(
+		ASCInterface->GetAbilitySystemComponent()->GetAttributeSet(UAuraAttributeSet::StaticClass())
+	);
+```
+
+
+## 🧩 为什么要传 `UAuraAttributeSet::StaticClass()`？
+
+### ✅ 因为 `GetAttributeSet()` 需要你指定 **你想取哪个属性集类型的对象**
+
+* `AbilitySystemComponent` 可能有多个属性集（AttributeSet），比如：
+
+  * `UHealthAttributeSet`
+  * `UManaAttributeSet`
+  * `UAuraAttributeSet`（你自定义的）
+* 所以你要告诉它：**我要的是 `UAuraAttributeSet` 类型的那一个属性集实例。**
+
+这时候就必须传入：
+
+```cpp
+UAuraAttributeSet::StaticClass()
+```
+
+它的作用是：
+
+* 获取 UAuraAttributeSet 对应的 **类型对象**（`UClass*`）；
+* 然后内部查找匹配的属性集并返回指针。
+
+---
+
+## 📌 `StaticClass()` 是什么？
+
+在 UE 中，每个 `UCLASS()` 类型都会自动生成一个 `StaticClass()` 静态函数，用来返回它的类型信息对象（`UClass*`）。
+
+等价于：
+
+```cpp
+UClass* AuraAttrClass = UAuraAttributeSet::StaticClass();
+```
+# 37.MVC
+![](https://tuchuanglpa.oss-cn-beijing.aliyuncs.com/tuchuanglpa/20250613162502886.png)
+MVC（Model-View-Controller）是一种常见的软件架构模式，用于组织和设计应用程序。它将应用程序分为三个逻辑层：模型（Model）、视图（View）和控制器（Controller）。
+
+模型（Model）层： 主要处理数据相关的内容，和数据库进行读取，写入，更新，删除等操作。并定义了操作和访问这些数据的方法。
+视图（View）层： 视图层负责展示模型层的数据给用户，并接收用户的输入。它是用户界面的一部分，负责展示信息、呈现数据、收集用户输入等。视图层通常是根据模型层的数据来动态生成的，以便用户可以直观地与数据进行交互。
+控制器（Controller）层： 控制器层接收用户的输入，并根据输入调度和处理请求。它负责处理用户与应用程序的交互逻辑，决定如何更新模型层数据和选择合适的视图层。控制器将用户的请求转发给模型层进行处理，并在完成后更新视图层以显示结果。
+通过MVC的方式，我们将各部分模块化分工，将关注点分离，提高应用程序的可维护性，可扩展性和可测试性。
+
+很好的问题！你提到的 **Slot** 和 **Overlay Slot** 是 Unreal Engine UMG（UI 系统）中的**布局系统核心概念**，下面我会通俗、准确地解释它们的含义及区别。
+
+# 38.Slot布局插槽
+
+
+
+> 在 Unreal UMG 中，**Slot 是 Widget 在父容器中的布局信息的封装**，包括了像 **对齐方式、边距、位置** 等属性。
+
+也就是说，**每个控件（Widget）被添加到一个父容器中时，都会被自动包装在一个 Slot 中**，这个 Slot 的类型取决于它所在的容器类型。如overlay Slot就是在overlay父容器下的
+
+
 
