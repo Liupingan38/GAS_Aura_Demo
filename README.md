@@ -55,7 +55,7 @@
 - **避免依赖全局状态**  
   如 `UGameplayStatics::GetPlayerController(0)` 可能因玩家索引变化导致非确定性。
 # 3.UCLASS(Abstract) 
-将 Abstract 添加到 UCLASS 宏中用于标记该类为 抽象基类，禁止直接实例化;
+将 Abstract 添加到 UCLASS 宏中用于标记该类为 **抽象基类**，禁止直接实例化;
 
 >核心作用:
 1.禁止创建实例：标记为 Abstract 的类无法在 UE 编辑器中被直接拖放到场景或蓝图继承，只能作为其他类的父类使用。
@@ -301,6 +301,13 @@ APawn* ControlledPawn = GetPawn<APawn>(); // ✅ 也是正确（UE5新写法）
 
 ## ✅ 1. **虚函数（virtual function）**
 
+
+
+### 含义：
+
+* 虚函数支持**多态**（运行时绑定），可以不用override
+* 父类指针或引用调用时，**会执行子类的重写版本**
+
 ```cpp
 class Base {
 public:
@@ -308,14 +315,7 @@ public:
         cout << "Base Foo" << endl;
     }
 };
-```
 
-### 含义：
-
-* 虚函数支持**多态**（运行时绑定）
-* 父类指针或引用调用时，**会执行子类的重写版本**
-
-```cpp
 class Child : public Base {
 public:
     void Foo() override {
@@ -326,6 +326,15 @@ public:
 Base* b = new Child();
 b->Foo();  // 输出 "Child Foo"
 ```
+
+ **输出结果总览**：
+   | 代码形式                  | 输出结果       | 是否合法 |
+   |---------------------------|----------------|----------|
+   | `Base* b = new Child();`  | `"Child Foo"`  | ✔️ 合法  |
+   | `Base* b = new Base();`   | `"Base Foo"`   | ✔️ 合法  |
+   | `Child* b = new Child();` | `"Child Foo"`  | ✔️ 合法  |
+   | `Child* b = new Base();`  | **编译错误**   | ❌ 非法，无法通过子类指针指向父类对象  |
+
 
 ---
 
@@ -729,7 +738,6 @@ GAS 的服务器权威模式 + 结构化属性系统：
 > “GAS 在多人联机下的最大优势是：提供完整的网络同步框架，包括属性复制、技能触发、客户端预测与服务端权威执行，大大减少了开发者手动处理 RPC 和作弊防护的复杂度。”
 
 # 21. GAS::Ability Task
-非常好，这两个问题都与 **Unreal Engine 的 Gameplay Ability System（GAS）** 密切相关，尤其是在实现技能逻辑时，**Ability Task 是核心工具**。我们来逐个解释：
 
 ---
 
@@ -951,9 +959,7 @@ P_2->GetAttributeSet()->GetHealth();  // 这时是读取 replicated 值
 通过绑定委托（OnRep\_）、监听 GAS 事件、或 Widget 更新 Tick 来完成 UI 更新。
 
 # 25. Replication Mode
-当然可以。下面我将用通俗易懂的方式，通过**三种典型游戏类型**来举例说明 GAS 的三种 Replication Mode 的使用场景和理由，帮助你建立更具象的理解：
 
----
 
 ## ✅ 1. `Full` 模式
 
@@ -987,7 +993,7 @@ P_2->GetAttributeSet()->GetHealth();  // 这时是读取 replicated 值
 
 ### 🧠 为什么用 Mixed？
 
-* GE 只复制给自己 → 降低网络压力
+* **GE 只复制给自己** → 降低网络压力
 * Gameplay Tags（如“Stunned”）和 Cue（如爆炸特效）同步给所有人 → **状态可感知**
 * 避免敌人看到你的具体 Buff 数值，提升游戏公平性和性能
 
@@ -1008,7 +1014,7 @@ P_2->GetAttributeSet()->GetHealth();  // 这时是读取 replicated 值
 ### 🧠 为什么用 Minimal？
 
 * 减少带宽消耗，**提升大规模 AI 战斗性能**
-* GE 不复制（属性伤害、Buff 本地运行）
+* **GE 不复制**（属性伤害、Buff 本地运行）
 * 仅同步 Cue（特效）和 Tags（如“正在燃烧”）
 
 ✅ 适合：**AI 控制角色、大量非重要单位**
@@ -1218,6 +1224,223 @@ void InitHealth(float NewVal);
 
 在 GAS 中，我们经常需要重复写以上四个函数，而 GAS 提供了宏（Macro）来帮你统一自动生成这些函数，避免手动重复代码。
 
+# Debug：运行游戏，按一下~，输入showdebug abilitysystem
 # Debug1.PlayerState为nullptr
 #### 原因：场景内已有角色
 正常情况下通过玩家出生点生成才是正确的做法，当然如果偏要在场景里面放也行，你放进去的角色，在细节面板里把Pawn分类下的自动控制玩家设置一下就行了，如果设置的是玩家0就只会有一个你操控的角色，设置成其他就会出现另一个角色
+
+
+# 动态委托系统
+
+## 🧠 一句话理解
+
+**动态委托 = 运行时可绑定的函数指针（并且支持蓝图）**
+
+你可以：
+
+* 把某个函数绑定到事件上（例如碰撞、触发器）；
+* 当事件发生时，这个函数就会被自动调用。
+
+---
+
+## 🧩 动态委托的基本用法
+
+### 1. 绑定方式
+
+```cpp
+Sphere->OnComponentBeginOverlap.AddDynamic(this, &AActorClass::OnOverlap);
+```
+
+### 2. 要求被绑定的函数必须这样写：
+
+```cpp
+UFUNCTION()
+void OnOverlap(UPrimitiveComponent* OverlappedComponent, AActor* OtherActor,
+               UPrimitiveComponent* OtherComp, int32 OtherBodyIndex, bool bFromSweep, const FHitResult& SweepResult);
+```
+
+### 💡 注意事项：
+
+* 必须加上 `UFUNCTION()` 宏；
+* 参数必须和事件要求的一致；
+* 返回值必须是 `void`；
+* 被绑定的函数不能是 `static`，不能是 `private`（除非 friend），否则会报错；
+* `AddDynamic()` 是为**动态委托**使用的，和 `AddLambda()`、`AddUObject()` 是不同的。
+
+---
+
+## 🔁 对比静态委托 vs 动态委托
+
+| 特性        | 静态委托（普通 C++ 委托）          | 动态委托（支持反射）   |
+| --------- | ------------------------ | ------------ |
+| 蓝图可访问     | ❌ 不可访问                   | ✅ 可访问        |
+| 性能        | ✅ 更快                     | ❌ 稍慢（因为使用反射） |
+| 持久化（保存状态） | ❌ 不可保存                   | ✅ 可被序列化保存    |
+| 示例函数      | `AddUObject`、`AddLambda` | `AddDynamic` |
+| 用法场景      | 游戏逻辑、C++ 系统事件            | 蓝图事件响应、组件触发  |
+
+---
+
+
+## 🧩 常用动态委托类型（在组件里）
+
+| 委托名                        | 描述              |
+| -------------------------- | --------------- |
+| `OnComponentBeginOverlap`  | 某组件被另一个物体触发时调用  |
+| `OnActorBeginOverlap`      | 整个 Actor 被触发时调用 |
+| `OnComponentHit`           | 碰撞事件（如刚体碰撞）     |
+| `OnDestroyed`              | Actor 被销毁时调用    |
+| `OnClicked` / `OnReleased` | UI 或 Actor 被点击时 |
+
+# UFUNCTION()
+
+`UFUNCTION()` 是 Unreal Engine（UE）中用于标记函数的宏，它的作用是让函数**参与 UE 的反射系统（Reflection System）**，从而支持：
+
+---
+
+## ✅ 1. **蓝图调用与事件绑定**
+
+只有加了 `UFUNCTION()` 的函数才能：
+
+* 被 **蓝图调用**；
+* 被 **动态委托（`AddDynamic`）绑定**，没有 `UFUNCTION()`，编译器会报错；
+* 被引擎自动识别、序列化、网络复制等。
+
+## ✅ 2. **常用参数**
+| 参数                              | 作用                            | 
+| ------------------------------- | ----------------------------- |
+| **BlueprintCallable**           | 允许在蓝图中调用该函数                   | 
+| **BlueprintPure**               | 蓝图中可调用，且**不修改任何数据**（无副作用）     | 
+| **BlueprintImplementableEvent** | 只声明，不在 C++ 中实现，**由蓝图实现**      | 
+| **BlueprintNativeEvent**        | 可在 C++ 实现，也能被蓝图重写             | 
+| **Exec**                        | 可在控制台中调用（如 `CheatManager` 命令） | 
+| **Server**                      | 声明该函数只在服务端执行（网络同步）            | 
+| **Client**                      | 声明该函数只在客户端执行（网络同步）            | 
+| **NetMulticast**                | 在服务端调用，所有客户端同步执行              | 
+| **Reliable**                    | 网络调用时保证传输（否则可能丢包）             | 
+| **Unreliable**                  | 网络调用可丢弃（更快）                   | 
+| **Category**                    | 设置蓝图中函数的分类                    | 
+
+
+# 反射系统
+
+Unreal Engine（UE）的\*\*反射系统（Reflection System）\*\*是整个引擎最核心的机制之一，支撑了蓝图（Blueprint）、编辑器属性暴露、网络复制、GC（垃圾回收）、动态委托等一整套生态。
+
+---
+
+## 🧠 一句话理解
+
+**UE的反射系统让 C++ 能“像脚本语言一样”，在运行时查找、调用、修改类和变量。**
+
+---
+
+## 🔧 1. 反射的本质是什么？
+
+在 C++ 中，类名、函数名、变量名在编译后都会消失（变成地址和汇编符号），我们不能像 Python、JavaScript 那样动态访问或调用。
+
+Unreal Engine 通过 UHT（Unreal Header Tool）和一些宏（如 `UCLASS`, `UFUNCTION`, `UPROPERTY`）**提前生成元数据**，在编译时构建一个类型描述系统，使得运行时也可以：
+
+* 查找某个类的函数名、变量名；
+* 调用某个类的函数；
+* 动态设置对象属性；
+* 蓝图调用 C++ 函数；
+* 进行网络同步；
+* GC 自动回收 UObject；
+* 实现动态委托；
+* 编辑器显示和修改 C++ 对象属性。
+
+---
+
+## 🧩 2. 常见的反射相关宏
+
+| 宏             | 用途                       |
+| ------------- | ------------------------ |
+| `UCLASS()`    | 声明类为可反射对象                |
+| `USTRUCT()`   | 声明结构体为可反射                |
+| `UENUM()`     | 声明枚举为可反射                 |
+| `UFUNCTION()` | 声明函数可被反射（如蓝图调用、动态绑定）     |
+| `UPROPERTY()` | 声明成员变量可被编辑器访问、GC追踪、网络复制等 |
+
+---
+
+### 🗃️ 示例代码：
+
+```cpp
+UCLASS()
+class MYGAME_API AMyActor : public AActor
+{
+    GENERATED_BODY()
+
+public:
+    UFUNCTION(BlueprintCallable)
+    void DoSomething();
+
+    UPROPERTY(EditAnywhere, BlueprintReadWrite)
+    float Health;
+};
+```
+
+这段代码在编译时，UHT 会生成相应的元数据，供引擎查询使用。
+
+---
+
+## 🔍 3. 反射系统支持的功能一览
+
+| 功能            | 是否基于反射                                                    |
+| ------------- | --------------------------------------------------------- |
+| 蓝图调用 C++ 函数   | ✅ 必须加 `UFUNCTION()`                                       |
+| 蓝图读取/修改属性     | ✅ 必须加 `UPROPERTY()`                                       |
+| 编辑器中显示变量      | ✅ `UPROPERTY(EditAnywhere)` 等                             |
+| UObject 创建与查找 | ✅ 如 `FindObject<UClass>()`                                |
+| 垃圾回收          | ✅ UObject 自动追踪所有 `UPROPERTY()` 成员                         |
+| 网络复制（RPC）     | ✅ 需要 `UFUNCTION(Server/Client)` 和 `UPROPERTY(Replicated)` |
+| 动态委托绑定        | ✅ 必须是 `UFUNCTION()` 才能 `AddDynamic()`                     |
+| 蓝图事件/接口/组件系统  | ✅ 完全依赖反射数据                                                |
+| 控制台命令调用函数     | ✅ 需加 `UFUNCTION(Exec)`                                    |
+
+---
+
+## 🧠 4. 元数据背后的机制
+
+### 📍 UHT：Unreal Header Tool
+
+* 在你每次编译 `.h` 文件时，UHT 会扫描你写的 `UCLASS`、`UFUNCTION` 等宏。
+* 它会生成 `.generated.h` 文件，这些文件包含注册用的元信息，比如：
+
+  * 类名、属性名、函数名
+  * 每个类有哪些变量
+  * 每个函数的参数与返回类型
+  * 哪些变量可复制、可序列化
+
+这些信息组成了 UE 的“反射数据库”，供运行时查询。
+
+UE 使用一套自定义的编译器工具 —— UnrealHeaderTool (UHT)，在你编译项目时：
+1. 扫描 .h 文件中的 UCLASS、UFUNCTION、UPROPERTY 宏；
+2. 自动生成辅助代码（比如 .gen.cpp 文件）；
+3. 让类、函数、变量注册到 UClass, UFunction, UProperty 等结构中；
+4. 支持运行时通过名字查找类和成员，
+
+---
+
+## 🧱 5. UObject 是反射的基础单位
+
+UE 的反射系统只适用于继承自 `UObject` 的类。
+
+### 所以：
+
+* 你不能在普通 `struct` 或标准 C++ 类中使用反射；
+* 想用 `UPROPERTY` / `UFUNCTION` 等功能，必须继承 `UObject`（或其子类如 `AActor`, `UActorComponent`, `UUserWidget` 等）；
+
+---
+
+## 🎯 小结：UE 反射系统作用总结
+
+| 能力     | 说明                                            |
+| ------ | --------------------------------------------- |
+| 类型识别   | `UClass::FindClass`, `IsA<T>()`, `GetClass()` |
+| 属性控制   | 蓝图访问变量、编辑器调节属性                                |
+| 动态函数调用 | 蓝图调用、动态委托、控制台命令                               |
+| 生命周期管理 | 垃圾回收依赖 `UPROPERTY()`                          |
+| 网络同步   | 属性复制和远程过程调用（RPC）                              |
+| 数据序列化  | 存档/读取 SaveGame，自动保存变量                         |
+
