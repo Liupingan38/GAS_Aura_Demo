@@ -12,11 +12,11 @@ AAuraEffectActor::AAuraEffectActor()
 {
 	PrimaryActorTick.bCanEverTick = false;
 
-	Mesh=CreateDefaultSubobject<UStaticMeshComponent>("Mesh");
-	RootComponent=Mesh;
+	Mesh = CreateDefaultSubobject<UStaticMeshComponent>("Mesh");
+	SetRootComponent(Mesh);
 
-	Sphere=CreateDefaultSubobject<USphereComponent>("Sphere");
-	Sphere->SetupAttachment(RootComponent);
+	Sphere = CreateDefaultSubobject<USphereComponent>("Sphere");
+	Sphere->SetupAttachment(GetRootComponent());
 
 }
 
@@ -28,8 +28,9 @@ void AAuraEffectActor::OnOverlap(UPrimitiveComponent* OverlappedComponent, AActo
 		const UAuraAttributeSet* AuraAttributeSet=
 			Cast<UAuraAttributeSet>(ASCInterface->GetAbilitySystemComponent()->GetAttributeSet(UAuraAttributeSet::StaticClass()));
 
-		UAuraAttributeSet* MutableAurattributeSet=const_cast<UAuraAttributeSet*>(AuraAttributeSet);
-		MutableAurattributeSet->SetHealth(MutableAurattributeSet->GetHealth()+25.f);
+		UAuraAttributeSet* MutableAuraAttributeSet=const_cast<UAuraAttributeSet*>(AuraAttributeSet);
+		MutableAuraAttributeSet->SetHealth(AuraAttributeSet->GetHealth()+25.f);
+		MutableAuraAttributeSet->SetMana(AuraAttributeSet->GetMana()-15.f);
 		Destroy();
 	}
 }

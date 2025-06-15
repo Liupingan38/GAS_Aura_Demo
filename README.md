@@ -1597,5 +1597,388 @@ MVC（Model-View-Controller）是一种常见的软件架构模式，用于组�
 
 也就是说，**每个控件（Widget）被添加到一个父容器中时，都会被自动包装在一个 Slot 中**，这个 Slot 的类型取决于它所在的容器类型。如overlay Slot就是在overlay父容器下的
 
+# 39.`TSubclassOf`：
 
+---
+
+### 1. 定义
+
+`TSubclassOf<T>` 是 Unreal Engine 提供的模板类型，用于保存一个类类型（`UClass*`），但**限制它必须是 `T` 或其子类**。它比直接使用 `UClass*` 更安全，具备类型检查功能，常用于在编辑器中指定蓝图类。
+
+---
+
+### 2. 使用场景
+
+* **编辑器选择蓝图类**：例如在组件中让设计师选择一个继承自 `UUserWidget` 的蓝图用于 UI。
+* **动态创建对象**：搭配 `CreateWidget<T>`、`SpawnActor<T>` 进行实例化时指定类。
+* **数据驱动设计**：如技能系统、工厂模式、AI 行为系统中，用 `TSubclassOf` 来配置将来要实例化的类类型。
+
+```cpp
+UPROPERTY(EditAnywhere)
+TSubclassOf<UAuraUserWidget> OverlayWidgetClass;
+
+UAuraUserWidget* Widget = CreateWidget<UAuraUserWidget>(GetWorld(), OverlayWidgetClass);
+```
+
+---
+
+### 3. 注意事项
+
+* **不等于类实例**，它保存的是类（`UClass*`），不能直接调用函数，必须先实例化。
+* **只能传子类**，否则编译时报错；这比裸 `UClass*` 更安全。
+* 若用在模板函数中（如 `CreateWidget`），模板参数必须与 `TSubclassOf` 的类型一致，否则类型推导失败。
+
+# 40.类类型 ≠ 类实例
+
+
+### 1. 定义
+
+**实例化（Instantiate）** 是指：根据一个类的定义，**创建出具体的对象（实例）**，这样你才能使用它的函数和成员变量。
+
+---
+
+### 2. 使用场景举例
+
+如果你有这个变量：
+
+```cpp
+TSubclassOf<UAuraUserWidget> OverlayWidgetClass;
+```
+
+它只是代表一个类，比如你选中了蓝图类 `WBP_HealthGlobe`，但它只是一个“类类型”，并不是一个真实的对象。
+
+你不能这么做：
+
+```cpp
+OverlayWidgetClass->SetHealth(50.f); // ❌ 报错：类不能直接调用实例方法
+```
+
+你必须先通过 `CreateWidget` 把它实例化成一个对象：
+
+```cpp
+UAuraUserWidget* Widget = CreateWidget<UAuraUserWidget>(GetWorld(), OverlayWidgetClass);
+Widget->SetHealth(50.f); // ✅ 正确：Widget 是对象，能调用方法
+```
+
+---
+
+### 3. 注意事项
+
+* `TSubclassOf<T>` 实质是 `UClass*` 的类型安全封装，不能当对象用；
+* 要操作类中的成员（比如调用函数、访问属性），**必须通过引擎的工厂函数如 `CreateWidget` 或 `SpawnActor` 实例化**；
+* 记住：**类只是蓝图，实例才是实体**，就像图纸不能当房子住，你得先建出来。
+
+# 41.工厂函数
+
+## 🔧 一句话定义：
+
+> **工厂函数是一种用来“生成对象”的函数，它隐藏了对象创建的细节，只暴露一个清晰的接口。**
+
+---
+
+## 🧱 示例对比（以 Unreal 的 `CreateWidget` 为例）
+
+### 🧱 普通方式（直接构造）：
+
+你手动构造对象，写法通常是：
+
+```cpp
+UAuraUserWidget* Widget = NewObject<UAuraUserWidget>(...);
+```
+
+这种方式灵活，但需要你手动设置很多细节，比如生命周期、Outer、Class 类型等。
+
+---
+
+### 🏭 工厂函数方式（封装创建）：
+
+Unreal 给你写好了一个工厂函数：
+
+```cpp
+UUserWidget* Widget = CreateWidget<UUserWidget>(World, WidgetClass);
+```
+
+这个函数内部自动帮你做了很多事情：
+
+* 指定 Outer；
+* 设置生命周期管理；
+* 初始化 Widget；
+* 保证和 UMG 系统集成良好。
+
+你只用提供：
+
+* `World`：在哪个世界创建；
+* `WidgetClass`：用哪种 Widget 蓝图类。
+
+---
+
+## 🧠 为什么使用工厂函数？
+
+| 优点          | 说明                                        |
+| ----------- | ----------------------------------------- |
+| ✅ **封装复杂性** | 用户不必关心构造细节，比如 GC、父对象、初始化顺序                |
+| ✅ **减少出错**  | 比直接 `new` 或 `NewObject` 更安全               |
+| ✅ **统一接口**  | 便于统一管理，如 UI 创建都通过一个函数                     |
+| ✅ **支持多态**  | 可以返回一个基类指针，实际类型由传入的类决定（如 UUserWidget 是基类） |
+
+---
+
+## 🎮 Unreal 中常见的工厂函数示例：
+
+| 工厂函数                        | 用途               |
+| --------------------------- | ---------------- |
+| `CreateWidget<T>()`         | 创建 UI Widget     |
+| `NewObject<T>()`            | 创建任意 UObject 类型  |
+| `SpawnActor<T>()`           | 在场景中生成 Actor     |
+| `ConstructObject<T>()`（已弃用） | 老版本 UObject 工厂函数 |
+
+
+# 42. 工厂方法模式 vs 抽象工厂模式
+
+
+
+## 1️⃣ 工厂方法模式（Factory Method Pattern）
+
+### ✅ 定义
+
+> **定义一个创建对象的接口，但让子类决定要实例化的类。**
+> 即：延迟对象的实例化到子类中完成。
+
+---
+
+### 🧱 结构
+
+```cpp
+class Product { public: virtual void Use() = 0; };
+
+class ConcreteProductA : public Product { public: void Use() override {...}; };
+class ConcreteProductB : public Product { public: void Use() override {...}; };
+
+class Factory {
+public:
+    virtual Product* CreateProduct() = 0;
+};
+
+class ConcreteFactoryA : public Factory {
+public:
+    Product* CreateProduct() override { return new ConcreteProductA(); }
+};
+
+class ConcreteFactoryB : public Factory {
+public:
+    Product* CreateProduct() override { return new ConcreteProductB(); }
+};
+```
+
+---
+
+## 2️⃣ 抽象工厂模式（Abstract Factory Pattern）
+
+### ✅ 定义
+
+> 提供一个接口，用于创建**一系列相关或相互依赖的对象**，而不需要指定它们的具体类。
+
+---
+
+### 🧱 结构
+
+```cpp
+// 抽象产品
+class Button { public: virtual void Render() = 0; };
+class Checkbox { public: virtual void Render() = 0; };
+
+// 具体产品
+class WindowsButton : public Button { void Render() override {...}; };
+class MacButton : public Button { void Render() override {...}; };
+class WindowsCheckbox : public Checkbox { void Render() override {...}; };
+class MacCheckbox : public Checkbox { void Render() override {...}; };
+
+// 抽象工厂
+class GUIFactory {
+public:
+    virtual Button* CreateButton() = 0;
+    virtual Checkbox* CreateCheckbox() = 0;
+};
+
+// 具体工厂
+class WindowsFactory : public GUIFactory {
+public:
+    Button* CreateButton() override { return new WindowsButton(); }
+    Checkbox* CreateCheckbox() override { return new WindowsCheckbox(); }
+};
+
+class MacFactory : public GUIFactory {
+public:
+    Button* CreateButton() override { return new MacButton(); }
+    Checkbox* CreateCheckbox() override { return new MacCheckbox(); }
+};
+```
+
+---
+
+
+
+## 🔍 总结对比
+
+| 对比点      | 工厂方法模式         | 抽象工厂模式         |
+| -------- | -------------- | -------------- |
+| 创建产品数量   | 一种产品           | 多种产品           |
+| 产品之间是否关联 | 无强关联           | 产品是一组、强关联（产品族） |
+| 是否使用继承   | 子类实现工厂方法       | 接口组合多个工厂方法     |
+| 扩展新产品    | 容易：新建一个子类工厂    | 困难：需改抽象工厂接口    |
+| 常见用途     | 单一类型扩展，如不同技能组件 | UI 控件系统、游戏皮肤系统 |
+
+---
+
+
+
+## ✅ 举例说明（游戏场景）
+
+### 工厂方法模式：
+
+* 每种敌人（Zombie、Boss、Wolf）都有自己的工厂类。
+* 创建敌人对象时，通过工厂调用 `CreateEnemy()`。
+
+### 抽象工厂模式：
+
+* 一整套 UI 样式（按钮、窗口、进度条）统一由 `FantasyUIFactory` 或 `SciFiUIFactory` 创建，保证样式一致。
+
+
+# 43.**向下转型（downcast）**
+
+```cpp
+UAttributeSet* Attr = new UAuraAttributeSet(); // 基类指针指向子类对象
+```
+
+你后来想访问子类的函数（比如 `GetHealth()`），就需要把它转回子类类型：
+
+```cpp
+UAuraAttributeSet* AuraAttr = Cast<UAuraAttributeSet>(Attr);
+AuraAttr->GetHealth(); // ✅ 子类特有的函数
+```
+
+只要**对象本身是子类的实例**，就可以安全地进行这种转换。
+
+# 44.动态多播委托
+
+
+
+> **动态多播是一种可以在蓝图中绑定多个响应函数的“事件代理（委托）”，在某个事件触发时，一口气调用所有绑定的函数。**
+
+
+---
+
+## ✅ 举个例子（代码）
+
+### 假设你有一个角色，当血量变化时通知多个 UI 控件更新：
+
+```cpp
+// 在角色的头文件中
+DECLARE_DYNAMIC_MULTICAST_DELEGATE_OneParam(FOnHealthChanged, float, NewHealth);
+
+UCLASS()
+class AMyCharacter : public ACharacter
+{
+    GENERATED_BODY()
+
+public:
+    // 事件声明
+    UPROPERTY(BlueprintAssignable)
+    FOnHealthChanged OnHealthChanged;
+    
+    void TakeDamage(float Damage) {
+        Health -= Damage;
+        OnHealthChanged.Broadcast(Health); // 广播消息
+    }
+
+private:
+    float Health = 100.0f;
+};
+```
+
+---
+
+### 然后在蓝图中：
+
+* 你可以从角色蓝图中绑定 `OnHealthChanged` 到多个 UI 元素，比如：
+
+  * 更新血条
+  * 播放受伤动画
+  * 播放音效
+
+
+
+## ✅ 为什么叫“动态”？
+
+| 类型              | 意义                     |
+| --------------- | ---------------------- |
+| **动态（Dynamic）** | 支持蓝图中绑定、解绑（运行时可以动态连接）  |
+| 静态（Non-Dynamic） | 仅限 C++ 中使用，效率更高但不可蓝图绑定 |
+
+# 45.GetGameplayAttributeValueChangeDelegate
+
+你贴出的代码是 Unreal Engine Gameplay Ability System（GAS）中用于**属性变化监听与事件广播**的标准做法。
+
+## 🔍 详细拆解
+
+### 🔧 1. `BindCallbacksToDependencies()`
+
+```cpp
+void UOverlayWidgetController::BindCallbacksToDependencies()
+{
+    const UAuraAttributeSet* AuraAttributeSet = CastChecked<UAuraAttributeSet>(AttributeSet);
+```
+
+```cpp
+AbilitySystemComponent->GetGameplayAttributeValueChangeDelegate(
+    AuraAttributeSet->GetHealthAttribute())
+    .AddUObject(this, &UOverlayWidgetController::HealthChanged);
+```
+
+这句话是**核心**：
+
+* `GetGameplayAttributeValueChangeDelegate(...)` 是 GAS 提供的接口，返回一个代理对象（delegate）；
+* `.AddUObject(...)` 表示 **当这个属性发生变化时，调用你的函数 `HealthChanged()`**；
+* `this` 表示绑定在当前的 `UOverlayWidgetController` 实例上；
+
+
+### 🔧 2. 响应函数（回调函数）
+
+```cpp
+void UOverlayWidgetController::HealthChanged(const FOnAttributeChangeData& Data) const
+{
+    OnHealthChanged.Broadcast(Data.NewValue);
+}
+```
+
+* `Data.NewValue`：当前新血量；
+* `OnHealthChanged` 是你在类中定义的动态多播代理；
+* `.Broadcast(...)` 表示：通知所有监听这个事件的系统，比如 UI 血条！
+
+
+
+---
+
+## 🎯 为什么要这样写？
+
+| 目的        | 实现方式                                    | 原因              |
+| --------- | --------------------------------------- | --------------- |
+| 监听属性变化    | `AddUObject(..., &X::Func)`             | GAS 提供的接口       |
+| 解耦 UI 与数据 | `.Broadcast(...)`                       | 多个系统可以监听，无需知道彼此 |
+| 蓝图可用      | 动态多播 + `UPROPERTY(BlueprintAssignable)` | 绑定蓝图响应函数        |
+| 结构清晰      | 每个属性单独监听、单独处理                           | 易于维护和扩展         |
+
+---
+
+## ✅ 实际运行时会发生什么？
+
+1. 角色受到伤害 → GAS 自动修改 `Health` 值；
+2. `AbilitySystemComponent` 发现 `Health` 被改动；
+3. 它触发 `GetHealthAttribute().Delegate → HealthChanged()`；
+4. `HealthChanged()` 再广播 `OnHealthChanged(NewValue)`；
+5. 绑定这个广播的 UI 蓝图更新血条数值。
+
+
+# Debug2.多人模式下，AttributeSet为nullptr
+#### 原因：和场内药水重叠了，先触发了overlay（）加血,但此时角色还未创建，AttributeSet为nullptr
 
