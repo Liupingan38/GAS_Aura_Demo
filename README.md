@@ -1,3 +1,8 @@
+# 0.Gameplay框架
+![](https://tuchuanglpa.oss-cn-beijing.aliyuncs.com/tuchuanglpa/20250619205953445.png)
+![](https://tuchuanglpa.oss-cn-beijing.aliyuncs.com/tuchuanglpa/20250619211447742.png)
+![](https://tuchuanglpa.oss-cn-beijing.aliyuncs.com/tuchuanglpa/20250619212227544.png)
+![](https://tuchuanglpa.oss-cn-beijing.aliyuncs.com/tuchuanglpa/20250619212404598.png)
 # 1.Super::BeginPlay();
 
 > ✅ **调用父类（基类）中实现的 `BeginPlay()` 函数，确保父类的初始化逻辑也被执行。**
@@ -1982,3 +1987,36 @@ void UOverlayWidgetController::HealthChanged(const FOnAttributeChangeData& Data)
 # Debug2.多人模式下，AttributeSet为nullptr
 #### 原因：和场内药水重叠了，先触发了overlay（）加血,但此时角色还未创建，AttributeSet为nullptr
 
+# 46.日志
+这行代码是 Unreal Engine（UE）中用来在控制台输出日志的宏，具体含义如下：
+
+```cpp
+UE_LOG(LogTemp, Warning, TEXT("Health:%f"), NewValue);
+```
+
+---
+
+### ✅ 含义逐部分解释：
+
+| 部分                  | 含义                                                                                        |
+| ------------------- | ----------------------------------------------------------------------------------------- |
+| `UE_LOG`            | UE 的日志输出宏，类似于 `printf` 或 `std::cout`，用于打印调试信息。                                            |
+| `LogTemp`           | 日志分类（Category），`LogTemp` 是默认临时日志类别。如果你有自定义日志，可以替换成你自己的类别。                                 |
+| `Warning`           | 日志级别。常见的还有：`Log`, `Warning`, `Error`，分别表示普通日志、警告、错误。                                      |
+| `TEXT("Health:%f")` | 日志内容格式字符串。这里使用 `TEXT` 宏是为了兼容 Unreal 的宽字符系统（`FString`）。`%f` 是 C++ 中的格式符，表示输出一个 `float` 类型。 |
+| `NewValue`          | 要替换 `%f` 的变量值，即打印出的数值。                                                                    |
+
+---
+
+
+### 🔧 提示：
+
+如果你希望这些日志也能在屏幕上显示（而不仅仅是控制台），可以这样做：
+
+```cpp
+if (GEngine)
+{
+    GEngine->AddOnScreenDebugMessage(
+        -1, 5.f, FColor::Red, FString::Printf(TEXT("Health: %f"), NewValue));
+}
+```
