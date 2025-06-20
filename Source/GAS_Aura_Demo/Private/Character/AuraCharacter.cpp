@@ -4,6 +4,7 @@
 #include "Character/AuraCharacter.h"
 
 #include "AbilitySystemComponent.h"
+#include "AbilitySystem/AuraAbilitySystemComponent.h"
 #include "GameFramework/CharacterMovementComponent.h"
 #include "Player/AuraPlayerController.h"
 #include "Player/AuraPlayerState.h"
@@ -43,11 +44,10 @@ void AAuraCharacter::InitAbilityActorInfo()
 	AAuraPlayerState* AuraPlayerState=GetPlayerState<AAuraPlayerState>();
 	check(AuraPlayerState);
 	AbilitySystemComponent=AuraPlayerState->GetAbilitySystemComponent();
-	check(AbilitySystemComponent);
 	AttributeSet=AuraPlayerState->GetAttributeSet();
-	check(AttributeSet);
 	
 	AbilitySystemComponent->InitAbilityActorInfo(AuraPlayerState,this);
+	Cast<UAuraAbilitySystemComponent>(AbilitySystemComponent)->AbilityActorInfoSet();
 	
 	if (AAuraPlayerController* AuraPlayerController=Cast<AAuraPlayerController>(GetController()))
 	{
@@ -57,39 +57,5 @@ void AAuraCharacter::InitAbilityActorInfo()
 		}
 	}
 }
-
-/*void AAuraCharacter::InitAbilityActorInfo()
-{
-	AAuraPlayerState* AuraPlayerState = GetPlayerState<AAuraPlayerState>();
-	if (!AuraPlayerState) return;
-
-	AbilitySystemComponent = AuraPlayerState->GetAbilitySystemComponent();
-	AttributeSet = AuraPlayerState->GetAttributeSet();
-
-	if (!AbilitySystemComponent || !AttributeSet)
-	{
-		UE_LOG(LogTemp, Warning, TEXT("InitAbilityActorInfo failed: ASC or AttributeSet is null"));
-		return;
-	}
-
-	// 初始化 GAS 所需信息
-	AbilitySystemComponent->InitAbilityActorInfo(AuraPlayerState, this);
-
-	// UI 初始化（仅本地控制客户端需要）
-	if (IsLocallyControlled())
-	{
-		if (AAuraPlayerController* AuraPlayerController = GetController<AAuraPlayerController>())
-		{
-			if (AAuraHUD* AuraHUD = Cast<AAuraHUD>(AuraPlayerController->GetHUD()))
-			{
-				AuraHUD->InitOverlay(AuraPlayerController, AuraPlayerState, AbilitySystemComponent, AttributeSet);
-			}
-			else
-			{
-				UE_LOG(LogTemp, Warning, TEXT("AuraHUD is null"));
-			}
-		}
-	}
-}*/
 
 
