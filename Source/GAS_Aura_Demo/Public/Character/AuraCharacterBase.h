@@ -2,16 +2,19 @@
 
 #pragma once
 
+#include "AbilitySystemComponent.h"
 #include "CoreMinimal.h"
 #include "AbilitySystemInterface.h"
 #include "GameFramework/Character.h"
+#include "Interaction/CombatInterface.h"
 #include "AuraCharacterBase.generated.h"
 
+class UGameplayEffect;
 class UAttributeSet;
 class UAbilitySystemComponent;
 
 UCLASS(Abstract)
-class GAS_AURA_DEMO_API AAuraCharacterBase : public ACharacter,public IAbilitySystemInterface
+class GAS_AURA_DEMO_API AAuraCharacterBase : public ACharacter,public IAbilitySystemInterface,public ICombatInterface
 {
 	GENERATED_BODY()
 
@@ -19,6 +22,7 @@ public:
 	AAuraCharacterBase();
 	virtual UAbilitySystemComponent* GetAbilitySystemComponent() const override;
 	UAttributeSet* GetAttributeSet() const {return AttributeSet;}
+	
 protected:
 	
 	virtual void BeginPlay() override;
@@ -32,4 +36,14 @@ protected:
 	TObjectPtr<UAttributeSet> AttributeSet;
 
 	virtual void InitAbilityActorInfo();
+
+	UPROPERTY(BlueprintReadOnly,EditAnywhere, Category="Attributes")
+	TSubclassOf<UGameplayEffect> DefaultPrimaryAttributesEffectClass;
+
+	UPROPERTY(BlueprintReadOnly,EditAnywhere, Category="Attributes")
+	TSubclassOf<UGameplayEffect> DefaultSecondaryAttributesEffectClass;
+
+	void ApplyEffectToSelf(const TSubclassOf<UGameplayEffect>& EffectClass,float Level=1.f) const;
+	void InitializeDefaultAttributes() const;
+	
 };

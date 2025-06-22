@@ -3,6 +3,7 @@
 ![](https://tuchuanglpa.oss-cn-beijing.aliyuncs.com/tuchuanglpa/20250619211447742.png)
 ![](https://tuchuanglpa.oss-cn-beijing.aliyuncs.com/tuchuanglpa/20250619212227544.png)
 ![](https://tuchuanglpa.oss-cn-beijing.aliyuncs.com/tuchuanglpa/20250619212404598.png)
+![](https://tuchuanglpa.oss-cn-beijing.aliyuncs.com/tuchuanglpa/20250619213705007.png)
 # 1.Super::BeginPlay();
 
 > ✅ **调用父类（基类）中实现的 `BeginPlay()` 函数，确保父类的初始化逻辑也被执行。**
@@ -2020,3 +2021,429 @@ if (GEngine)
         -1, 5.f, FColor::Red, FString::Printf(TEXT("Health: %f"), NewValue));
 }
 ```
+
+# 47.public\protected\private
+## 🎮 在 UE5 GAS 开发中的应用建议
+
+### 1. `public`
+
+🔓 **对外暴露使用的变量或函数**，适合：
+
+* 需要暴露给 **蓝图**、其他模块调用的接口
+* 希望其他模块通过 `GetHealth()` 读取血量等数据
+* 通常配合 `UFUNCTION(BlueprintCallable)` 或 `UPROPERTY(BlueprintReadWrite)` 使用
+
+```cpp
+public:
+    UPROPERTY(BlueprintReadWrite, Category="Attributes")
+    FGameplayAttributeData Health;
+
+    UFUNCTION(BlueprintCallable)
+    void ApplyHealing(float Amount);
+```
+
+📌 适用场景：提供 **公共接口**，供其他系统调用、蓝图访问等。
+
+---
+
+### 2. `protected`
+
+🛡️ **子类可以继承访问，但不暴露给外部模块**，适合：
+
+* 只希望子类能访问的变量/函数（如内部初始化、钩子函数）
+* 一些模板方法模式的函数，例如 `ApplyEffectInternal()` 在 `ApplyEffect()` 中被调用
+
+```cpp
+protected:
+    void HandleDeath();
+
+    UPROPERTY()
+    bool bIsDead;
+```
+
+📌 适用场景：需要 **类内部扩展性**，但不想暴露太多细节。
+
+---
+
+### 3. `private`
+
+🔐 **仅本类自己能访问的实现细节**，适合：
+
+* 临时状态、缓存、内部算法细节
+* 不希望被子类或其他模块访问
+
+```cpp
+private:
+    float CachedDamage;
+
+    void UpdateInternalState();
+```
+
+📌 适用场景：**完全不对外暴露**的内部逻辑，封装性好。
+
+---
+
+## 💡 GAS 中常见习惯总结
+
+| 元素类型                                | 推荐访问修饰符                                   | 原因         |
+| ----------------------------------- | ----------------------------------------- | ---------- |
+| `UPROPERTY()` 用于属性（如 Health、Mana）   | `public`（通常加 BlueprintReadWrite/ReadOnly） | 方便在蓝图中访问   |
+| `AbilitySystemComponent` 的绑定逻辑等辅助函数 | `protected`                               | 子类可以调用     |
+| 临时变量（如缓存值、计时器）                      | `private`                                 | 实现细节，不对外暴露 |
+| BlueprintCallable 的函数（如对外接口）        | `public`                                  | 供蓝图和其他类调用  |
+
+---
+
+## 🚨 注意事项
+
+* **蓝图访问权限 ≠ C++ 的 public**：即使变量是 `protected` 或 `private`，加了 `UPROPERTY(BlueprintReadWrite)` 也能在蓝图里访问。反射系统绕过了 C++ 的访问控制。
+* **如果你不希望蓝图访问，记得移除 BlueprintXXX 宏**。
+
+# 48.委托
+
+## ✅ 一句话理解委托
+
+> UE 的“委托”允许你注册多个函数，当特定事件发生时，这些函数会被自动调用。
+
+---
+
+## 📚 UE 中委托的四种类型（按功能）
+
+| 类型                                   | 描述            | 是否支持多播 | 是否支持蓝图 |
+| ------------------------------------ | ------------- | ------ | ------ |
+| `DECLARE_DELEGATE`                   | 基础委托，不带参数     | ❌ 单播   | ❌ 否    |
+| `DECLARE_DELEGATE_OneParam` 等        | 基础委托，带参数      | ❌ 单播   | ❌ 否    |
+| `DECLARE_DYNAMIC_DELEGATE`           | 支持反射（如蓝图）     | ❌ 单播   | ✅ 是    |
+| `DECLARE_DYNAMIC_MULTICAST_DELEGATE` | 支持反射+多播（最常用）  | ✅ 多播   | ✅ 是    |
+| `DECLARE_MULTICAST_DELEGATE`         | C++ 多播，但不支持蓝图 | ✅ 多播   | ❌ 否    |
+
+
+## 🛠 示例：玩家血量变化通知 UI
+
+### 1️⃣ 在角色组件中声明委托
+
+```cpp
+// 定义委托
+DECLARE_DYNAMIC_MULTICAST_DELEGATE_OneParam(FOnHealthChangedSignature, float, NewHealth);
+
+UCLASS()
+class MYGAME_API UMyHealthComponent : public UActorComponent
+{
+	GENERATED_BODY()
+
+public:
+	UPROPERTY(BlueprintAssignable, Category="Health")
+	FOnHealthChangedSignature OnHealthChanged;
+
+	void ChangeHealth(float NewHealth);
+};
+```
+
+### 2️⃣ 实现函数并触发委托
+
+```cpp
+void UMyHealthComponent::ChangeHealth(float NewHealth)
+{
+	// 修改内部血量
+	CurrentHealth = NewHealth;
+
+	// 触发通知（所有监听者都会收到）
+	OnHealthChanged.Broadcast(CurrentHealth);
+}
+```
+
+### 3️⃣ 蓝图中绑定
+
+在蓝图中，选中该组件，可以使用事件图表绑定 `OnHealthChanged`，就像响应按钮点击一样。
+
+# 49.lambda表达式
+非常好，你提到的是 **C++11 的 Lambda 表达式** 在 Unreal Engine 项目中的典型应用，结合了 UE 的 GAS（Gameplay Ability System）和调试功能。
+
+下面我会详细解释两部分内容：
+
+---
+
+## ✅ 一、什么是 Lambda 表达式？
+
+### 🧠 本质理解：
+
+> Lambda 是一种“**匿名函数**”——你可以**内联定义一个函数并立即使用它**，尤其适用于事件回调、临时逻辑。
+
+---
+
+### 🔹语法结构：
+
+```cpp
+[捕获列表](参数列表) -> 返回类型 { 函数体 }
+```
+
+但很多时候可以省略返回类型。
+
+---
+
+### 📌 示例解析你给的代码：
+
+```cpp
+Cast<UAuraAbilitySystemComponent>(AbilitySystemComponent)->EffectAssetTags.AddLambda(
+	[this](const FGameplayTagContainer& TagContainer)
+	{
+		for (const FGameplayTag& Tag : TagContainer)
+		{
+			// 打印标签
+			const FString Msg = FString::Printf(TEXT("GE Tag: %s"), *Tag.ToString());
+			GEngine->AddOnScreenDebugMessage(-1, 5.f, FColor::Blue, Msg);
+
+			// 查表获取信息（如用于 UI）
+			GetDataTableRowByTag<FUIWidgetRow>(MessageWidgetDataTable, Tag);
+		}
+	}
+);
+```
+
+---
+
+## ✅ 二、关键概念解释
+
+### 1. `AddLambda(...)` 是什么？
+
+这是一个 **将 lambda 表达式注册到委托中** 的写法，相当于告诉 `EffectAssetTags`：
+
+> 以后当某个事件触发时，就调用这段匿名函数！
+
+---
+
+### 2. `[this]` 是捕获列表
+
+* `this` 表示捕获当前类的 `this` 指针；
+* 这样你就可以在 lambda 内部访问当前类的成员函数（如 `GetDataTableRowByTag()`）和变量（如 `MessageWidgetDataTable`）；
+
+#### ✅ 示例类成员访问：
+
+```cpp
+[this] { this->DoSomething(); }
+```
+
+或者省略 `this->`：
+
+```cpp
+[this] { DoSomething(); }
+```
+
+### ✅ 捕获列表其他写法：
+
+| 写法              | 含义                   |
+| --------------- | -------------------- |
+| `[=]`           | 捕获外部所有变量 **按值**（只读）  |
+| `[&]`           | 捕获外部所有变量 **按引用**（可改） |
+| `[this]`        | 捕获当前对象指针（用于类内成员访问）   |
+| `[var1, &var2]` | 显式捕获某些变量，按值或按引用      |
+
+---
+
+## ✅ 三、应用场景
+
+在 Unreal Engine 中你经常在以下场景看到 Lambda：
+
+* `AddLambda()` 添加事件监听器（如按钮、计时器、GAS标签广播等）
+* `AsyncTask`、`Timer` 等异步回调
+* 在 `TFunction`、`std::function` 等需要函数对象的地方传入一段短逻辑
+
+# 50.const成员函数和mutable
+
+## ✅ `const` 成员函数含义
+
+在 C++ 中，当你写一个成员函数时在结尾加上 `const`：
+
+```cpp
+ReturnType ClassName::FunctionName(...) const
+```
+
+这表示：
+
+> **这个成员函数不会修改当前类对象的成员变量（也不能调用其他非 const 的成员函数）**。
+
+---
+
+## ✅ 为什么要用 `const`？
+
+主要目的有两个：
+
+### 1. **语义清晰**
+
+你告诉调用者：“我这个函数只是查询数据，不会动任何东西。”
+
+### 2. **支持 const 对象调用**
+
+```cpp
+const UAuraAbilitySystemComponent* Component = GetComponent();
+Component->EffectApplied(...);  // OK 只有当 EffectApplied 是 const 函数
+```
+
+---
+
+
+## ✅ 什么时候**不能**加 `const`？
+
+你**不能把成员函数标为 `const`**，如果它：
+
+1. ❌ **修改了类的成员变量**
+2. ❌ **调用了非 `const` 成员函数**
+3. ❌ **对成员变量调用了可能修改状态的非 `const` 方法**
+4. ❌ **访问了不能用 `mutable` 标记的状态性资源（如日志缓存、计数器等）**
+
+------
+
+## 🛠 如何解决？
+
+你有两种方式：
+
+### ✅ 方法 1：**去掉 const**
+
+如果函数本来就会改状态，那你就别写 `const`。
+
+```cpp
+void SetValue(int NewVal) { Value = NewVal; }
+```
+
+---
+
+### ✅ 方法 2：**使用 `mutable`**
+
+如果你修改的成员变量不代表逻辑状态（如缓存、调试信息），可以把它声明为 `mutable`：
+
+```cpp
+class MyClass
+{
+public:
+    void LogAccess() const { AccessCount++; }
+
+private:
+    mutable int AccessCount = 0;
+};
+```
+
+✅ 这样 `AccessCount++` 在 const 函数中是允许的。
+
+---
+
+## ✅ 总结表格
+
+| 行为                       | 是否允许在 `const` 成员函数中 |
+| ------------------------ | ------------------- |
+| 修改成员变量（如 `Health = 100`） | ❌ 否                 |
+| 调用非 const 的其他成员函数        | ❌ 否                 |
+| 调用 const 的其他成员函数         | ✅ 是                 |
+| 修改 `mutable` 成员变量        | ✅ 是                 |
+| 调用成员对象的 `const` 方法       | ✅ 是                 |
+| 调用成员对象的非 `const` 方法      | ❌ 否                 |
+
+## ✅ 总结：返回值的 const 推荐策略
+| 用法                       | 原因                    |
+| ------------------------ | --------------------- |
+| `const TArray<Type>&` 传参 | 避免复制数组（高性能）           |
+| `const FString&` 传参      | 避免构造/析构字符串            |
+| 成员函数加 `const`            | 可在 const 对象中调用；编译器能优化 |
+| 返回 `const &`             | 避免复制 + 禁止修改           |
+
+# 51.成员变量/函数/对象/指针
+| 名称                      | 是什么          | 举例                       | 属于谁                   |
+| ----------------------- | ------------ | ------------------------ | --------------------- |
+| ✅ 成员变量（Member Variable） | 类里的变量，用于保存数据 | `int Health;`            | 属于类的每个对象              |
+| ✅ 成员函数（Member Function） | 类里的函数，用于定义行为 | `void Attack();`         | 属于类的每个对象              |
+| ✅ 成员对象（Member Object）   | 一个类作为另一个类的变量 | `Inventory MyBag;`       | 属于类对象的成员变量，但它本身是个“对象” |
+| ✅ 成员指针（Member Pointer）  | 类中指向对象的指针    | `USceneComponent* Mesh;` | 属于类，但指向其他堆上的对象        |
+
+# 52.`AActor` vs `APawn` vs `ACharacter`
+
+## ✅ 类关系图（继承关系）
+
+```
+AActor
+  ├── APawn
+  │     └── ACharacter
+```
+
+---
+
+## ✅ `AActor` vs `APawn` vs `ACharacter` 对比表
+
+| 特性/类项                | `AActor`            | `APawn`                    | `ACharacter`                      |
+| -------------------- | ------------------- | -------------------------- | --------------------------------- |
+| 📚 继承层级              | 最基本的游戏对象类           | 继承自 `AActor`，代表“可被控制”的实体   | 继承自 `APawn`，为人形角色提供完整移动系统         |
+| 👥 是否可被控制            | ❌ 默认不可（需扩展逻辑）       | ✅ 可以被 `Controller` 控制      | ✅ 同样可被控制                          |
+| 🧠 控制器支持             | ❌ 无 `Controller` 支持 | ✅ 支持 AI 和 PlayerController | ✅ 同样支持                            |
+| 🧱 是否具备运动组件          | ❌ 没有内建移动系统          | ❌ 需要自己实现移动组件               | ✅ 自带 `CharacterMovementComponent` |
+| 🏃 是否支持走/跑/跳/下落      | ❌ 不支持               | ❌ 自己实现                     | ✅ 内建功能完善（含地面检测、重力）                |
+| 🦴 是否自带 SkeletalMesh | ❌ 你得手动加             | ❌ 自己加                      | ✅ 默认含 `SkeletalMeshComponent`     |
+| 🎯 是否有碰撞体            | ❌ 默认无               | ❌ 需手动添加                    | ✅ 默认 `CapsuleComponent` 作为 Root   |
+| 🔂 Tick 支持           | ✅ 有 Tick            | ✅ 同上                       | ✅ 同上                              |
+| 🧩 推荐用途              | 所有对象的基础，如门、武器、机关等   | 自定义可控对象，如车、飞船、炮塔           | 人形角色，如玩家、敌人、NPC                   |
+| 🧠 AI 可控             | 需自定义行为              | ✅                          | ✅                                 |
+| 🔁 动画蓝图支持            | ❌                   | ✅（加 SkeletalMesh 后）        | ✅（原生支持）                           |
+| 🎮 玩家控制支持            | ❌ 需扩展               | ✅ 支持                       | ✅ 支持                              |
+
+---
+
+## ✅ 总结要点
+
+* `AActor` 是最基础的游戏对象。
+* `APawn` 用于需要被“控制”的对象（玩家、AI），但不自带移动能力。
+* `ACharacter` 是用于人形角色的高级类，带完整的行走、跳跃、动画系统。
+
+#  53.`MakeEffectContext()`&`MakeOutgoingSpec()`
+
+### 🔹 `MakeEffectContext()`
+
+```cpp
+FGameplayEffectContextHandle UAbilitySystemComponent::MakeEffectContext()
+```
+
+**作用：**
+创建一个 `FGameplayEffectContextHandle`，它用来记录这次效果的来源信息，如：
+
+* 是谁释放的技能
+* 命中的是谁
+* 是否是暴击
+* 是否穿透
+* 是近战还是远程……
+
+👉 **用处：** 后续可以在属性变化函数中取出 `EffectContext` 来判断是谁对我造成了影响（例如造成伤害的敌人是谁）。
+
+---
+
+### 🔹 `MakeOutgoingSpec(...)`
+
+```cpp
+FGameplayEffectSpecHandle UAbilitySystemComponent::MakeOutgoingSpec(
+    TSubclassOf<UGameplayEffect> GameplayEffectClass,
+    float Level,
+    FGameplayEffectContextHandle Context
+)
+```
+
+**作用：**
+根据指定的 `GameplayEffect` 类、等级和上下文，**构建一个即将被应用的效果规格（Spec）**。
+
+* `GameplayEffectClass`：你要应用的 GE 类（如加生命、伤害）
+* `Level`：效果的等级，会影响计算值
+* `Context`：这个 GE 的上下文（谁发出的、是否暴击等）
+
+👉 **用处：** 你可以对 `SpecHandle` 做进一步配置，然后再应用。
+
+# 54.Derived Attributes
+![](https://tuchuanglpa.oss-cn-beijing.aliyuncs.com/tuchuanglpa/20250622155415593.png)
+![](https://tuchuanglpa.oss-cn-beijing.aliyuncs.com/tuchuanglpa/20250622190301329.png)
+![](https://tuchuanglpa.oss-cn-beijing.aliyuncs.com/tuchuanglpa/20250622194103075.png)
+
+# 55.int32
+
+## ✅ 为什么使用 `int32`
+
+`int32` 是 Unreal Engine（UE）推荐的标准整型类型，原因如下：
+
+| 项目              | 原因                                                      |
+| --------------- | ------------------------------------------------------- |
+| ✅ **跨平台一致性**    | `int32` 在所有平台上都明确是 **32 位有符号整数**，而 `int` 在某些平台可能不是。     |
+| ✅ **与UE宏系统兼容**  | UPROPERTY、RPC（如 `ReplicatedUsing`）等系统依赖确定大小的类型。         |
+| ✅ **内存和网络效率**   | 32 位整数足够表示常见游戏中的等级、金钱、积分等，同时不会浪费太多内存。                   |
+| ✅ **引擎源码中广泛使用** | 引擎本身大量使用 `int32`、`float`、`FString` 等统一类型，所以跟随规范有助于可维护性。 |
