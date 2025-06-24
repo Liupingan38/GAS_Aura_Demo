@@ -2447,3 +2447,378 @@ FGameplayEffectSpecHandle UAbilitySystemComponent::MakeOutgoingSpec(
 | ✅ **与UE宏系统兼容**  | UPROPERTY、RPC（如 `ReplicatedUsing`）等系统依赖确定大小的类型。         |
 | ✅ **内存和网络效率**   | 32 位整数足够表示常见游戏中的等级、金钱、积分等，同时不会浪费太多内存。                   |
 | ✅ **引擎源码中广泛使用** | 引擎本身大量使用 `int32`、`float`、`FString` 等统一类型，所以跟随规范有助于可维护性。 |
+
+# 56.static
+## ✅ 一句话总结
+
+> `static` 的关键作用在于 **控制“作用域”和“生命周期”**：
+> 类中用于**共享**，函数中用于**保留状态**，文件中用于**隐藏**。
+
+---
+
+## ✅ C++ 中 5 类常见 `static` 用法对比总结
+
+| 类别            | 所属位置      | 作用范围        | 生命周期     | 常见用途        | 
+| ------------- | --------- | ----------- | -------- | ----------- | 
+| 1. 静态成员变量     | 类中        | 类作用域，所有对象共享 | 程序全程     | 所有对象共享数据，全局计数器、配置池等 | `static int Count;`         |
+| 2. 静态成员函数     | 类中        | 类作用域，可类名调用  | 程序全程     | 工具类函数、访问类的静态状态 | `static void Init();`       |
+| 3. 局部静态变量     | 函数中       | 函数局部        | 函数第一次调用后 | 缓存、延迟初始化、惰性单例 | `static int i = 0;`         |
+| 4. 静态自由函数（类外） | .cpp 文件   | 当前源文件（编译单元） | 程序全程     | 不暴露实现细节（私有 .cpp 工具函数）   | `static void Helper();`     |
+| 5. 静态全局变量     | .cpp 文件全局 | 当前源文件（编译单元） | 程序全程     | 限定全局变量作用域，防止冲突      | `static int GlobalVar = 5;` |
+
+---
+
+
+## ⚠️ 常见注意事项与误区
+
+### 1️⃣ 静态成员变量要在类外定义一次
+### 2️⃣ 静态成员函数不能访问非静态成员
+### 3️⃣ 函数内部 static 变量只初始化一次
+### 4️⃣ `.cpp` 文件中声明的 `static` 函数/变量无法跨文件访问
+### 5️⃣ 静态变量不是线程安全的（默认）
+
+* 函数内的静态变量，在多线程并发首次初始化时可能出现竞态问题（C++11 起大多已线程安全，但依编译器）
+* 若涉及并发，建议使用 `std::call_once` 或其他线程同步机制
+
+# 57.单例（静态单例标签注册器）
+## ✅ 这个单例的设计目的
+
+这是一个用于注册原生（Native）Gameplay Tags 的**全局工具类**，你不需要每次都创建 `FAuraGameplayTags` 实例，而是通过静态接口全局访问、注册与查询标签。
+
+---
+
+## ✅ 单例运行机制解析
+
+### 🌟 核心代码逻辑：
+
+```cpp
+// 静态成员变量定义（必须定义一次）
+FAuraGameplayTags FAuraGameplayTags::GameplayTags;
+
+// 获取实例（静态函数，类名调用）
+static const FAuraGameplayTags& Get() { return GameplayTags; }
+
+// 初始化注册标签
+void InitializeNativeGameplayTags() {
+    UGameplayTagsManager::AddNativeGameplayTag(...);
+}
+```
+
+### 💡 运行时流程：
+
+1. **程序启动时不会立刻创建 `GameplayTags`**，但它是静态变量，生命周期是整个程序期间。
+2. 当你第一次调用 `FAuraGameplayTags::Get()` 或 `InitializeNativeGameplayTags()` 时，它开始“活跃”。
+3. `InitializeNativeGameplayTags()` 会调用 **`UGameplayTagsManager` 注册标签**，这些标签可用于 Ability System。
+4. 通过 `FAuraGameplayTags::Get()`，你可以在任何地方访问这些标签，不用传对象、不用重复写字符串。
+
+---
+
+## ✅ 为什么 UE 的 GameplayTags 推荐用这种写法
+
+| 原因             | 解释                                                  |
+| -------------- | --------------------------------------------------- |
+| ✅ 不重复注册标签      | 所有标签集中初始化一次                                         |
+| ✅ 全局访问统一接口     | 任意 Actor、Ability 都能通过 `FAuraGameplayTags::Get()` 获取 |
+| ✅ 避免字符串硬编码错误   | 比如 `"Attributes.Strenght"` 写错也不会崩                   |
+| ✅ 编译时检查、智能提示支持 | 标签都在源码中注册，IDE 可提示和重构                                |
+## 延迟构造的全局单例类
+```cpp
+class FMySingleton
+{
+public:
+	static FMySingleton& Get()
+	{
+		static FMySingleton Instance; // ⚠️ C++11 保证线程安全的懒汉式构造
+		return Instance;
+	}
+private:
+	FMySingleton() {}
+};
+```
+
+# 58.原生（Native）Gameplay Tags
+
+
+**Native Gameplay Tags** 是指：
+
+> 在 C++ 代码中，通过 `UGameplayTagsManager::AddNativeGameplayTag()` 显式注册的标签，而不是在 `.ini` 或 Editor 中创建的。拥有更好的安全性、结构化和自动化支持，是大型项目推荐的标签管理方式。
+
+### ✅ 特点：
+
+| 原生 Gameplay Tag                                    | 非原生 Gameplay Tag（也叫 Dynamic Tag）         |
+| -------------------------------------------------- | ---------------------------------------- |
+| 在 C++ 中注册（如 `InitializeNativeGameplayTags`）        | 在 Editor 或 `DefaultGameplayTags.ini` 中声明 |
+| 编译期可见，支持智能提示、自动补全                                  | 字符串字面值，容易拼写错误                            |
+| 支持结构化封装，如 `FAuraGameplayTags::Attributes_Strength` | 不方便管理、分类不清晰                              |
+| 程序启动时注册，仅注册一次                                      | 可能来自动态资源或配置                              |
+
+---
+
+## ✅ 使用原生 Tag 的好处
+
+1. ✅ 编译期安全 —— 避免 `"Effect.Buff.Strenght"` 这种拼错字符串
+2. ✅ 支持结构化访问 —— 可集中封装到 `FAuraGameplayTags` 中
+3. ✅ 高性能 —— 启动时注册一次，不依赖资源加载
+4. ✅ 自动提示 / 重构友好 —— UE Editor 和 Rider 可识别
+5. ✅ 跨团队标准化 —— 所有标签统一来源、文档清晰
+
+# 59.FString vs FName vs FText
+
+## ✅ 底层对比图（结构简化）
+
+> `FString` 是灵活可编辑的字符串，`FName` 是高效唯一的名字标识符，`FText` 是支持多语言的本地化字符串。三者设计各自针对不同功能，底层结构、性能和用途都不同。
+
+```cpp
+FString
+ └── TArray<TCHAR>
+       └── 内存：独立存储字符串
+
+FName
+ └── Index: uint32 → NameEntryPool["PlayerName"]
+ └── Number: 0/1/2 → 支持自动编号
+
+FText
+ └── TSharedRef<ITextData>
+       └── FString 字符串内容
+       └── Namespace + Key
+       └── 语言信息 + 本地化数据
+```
+
+---
+
+## ✅ 一表对比：FString vs FName vs FText（底层实现）
+
+| 特性/类型  | `FString`             | `FName`                        | `FText`                                    |
+| ------ | --------------------- | ------------------------------ | ------------------------------------------ |
+| 底层结构   | `TArray<TCHAR>`（动态数组） | `uint32 Index + uint32 Number` | `TSharedRef<ITextData>` 包裹 `FString` + 元信息 |
+| 是否可变   | ✅ 是                   | ❌ 否（内部常量池）                     | ⚠️ 否（不可直接修改，只能构造）                          |
+| 内存分配   | 每个 `FString` 都会单独分配内存 | 所有字符串集中在 `FNameEntry` 池中共享     | 共享文本数据，延迟翻译，支持 GC                          |
+| 快速比较性能 | ⚠️ 慢（字符逐个比对）          | ✅ 极快（比较索引）                     | ⚠️ 慢（需要结构比对）                               |
+| 本地化支持  | ❌ 不支持                 | ❌ 不支持                          | ✅ 支持（多语言文本系统）                              |
+| 底层用途   | 任意字符串数据               | 名字、标识符、枚举标签等                   | 面向用户的可翻译文本，如 UI、对白                         |
+
+---
+
+## 🔍 1. FString 底层实现细节
+
+```cpp
+class FString : public TArray<TCHAR>
+```
+
+### ✅ 本质：
+
+* 是一个对 `TArray<TCHAR>` 的封装（即一个动态宽字符数组）。
+* 内存是**每个字符串独立开辟的**。
+* 完全支持修改、拼接、格式化、切割等操作。
+
+### ⚠️ 缺点：
+
+* 每次比较都需要逐字符进行，性能较低；
+* 不支持多语言翻译。
+
+---
+
+## 🔍 2. FName 底层实现细节
+
+```cpp
+struct FName
+{
+	uint32 ComparisonIndex; // 字符串在表中的索引
+	uint32 Number;          // 编号，支持“Name_1”, “Name_2”等
+};
+```
+
+### ✅ 本质：
+
+* 所有 FName 的字符串都存放在一个 **全局字符串池（Name Table）** 中，称为 `FNameEntry`.
+* 每个 `FName` 只记录字符串的 **索引编号**，不是字符串本身！
+
+### ✅ 优势：
+
+* 比较两个 FName 只需比较整数索引，速度非常快；
+* 避免重复存储字符串，节省内存。
+
+### ⚠️ 缺点：
+
+* 字符串只可读，不可变；
+* 不支持翻译（不面向用户显示）。
+
+这是 `FName` 的两个核心成员变量：
+
+```cpp
+uint32 ComparisonIndex; // 字符串的唯一索引（指向全局 FNameEntry 表）
+uint32 Number;          // 同一个字符串的编号，用于区分 Name_1、Name_2 这样的情况
+```
+
+
+## ComparisonIndex&Number区别：
+
+| 属性     | ComparisonIndex       | Number                   |
+| ------ | --------------------- | ------------------------ |
+| 作用     | 表示字符串在全局表中的 ID        | 表示此字符串的“第几个版本”           |
+| 类型     | `uint32`，唯一、内部映射      | `uint32`，附加编号            |
+| 构造值影响  | 改变字符串实际含义             | 改变 `"Name"` → `"Name_1"` |
+| 是否参与比较 | ✅ 是，决定两个 `FName` 是否相等 | ✅ 是                      |
+
+---
+
+## 🔧 额外提示：
+
+```cpp
+FName Name("MyKey", 3);
+FString RealName = Name.ToString(); // 会得到 "MyKey_3"
+```
+
+
+---
+
+## 🔍 3. FText 底层实现细节
+
+```cpp
+class FText{ TSharedRef<ITextData> TextData;};
+```
+
+### ✅ 本质：
+
+* 是一个对共享数据的封装，内部存储实际字符串 + 本地化标识 + 语言信息。
+* 数据通过 `TSharedRef` 管理引用计数，支持 GC。
+* 支持运行时根据语言环境切换文本（即动态翻译）。
+
+### 🔧 ITextData 中可能包含：
+
+* 原始字符串
+* 源语言
+* 当前语言版本
+* 命名空间与键（用于查找翻译）
+
+### ⚠️ 缺点：
+
+* 构造复杂；
+* 不能直接拼接或修改（只能重建）；
+* 比较两个 `FText` 开销较大。
+
+---
+
+## ✅ 一览：常用 `FText` 相关函数
+
+| 方法/宏                | 用途                 | 是否支持翻译 | 示例                                                                        |
+| ------------------- | ------------------ | ------ | ------------------------------------------------------------------------- |
+| `FText::FromString` | 从 FString 创建 FText | ❌ 否    | `FText::FromString("Hello")`                                              |
+| `LOCTEXT`           | 静态本地化文本（类内宏）       | ✅ 是    | `LOCTEXT("Key", "你好")`                                                    |
+| `NSLOCTEXT`         | 命名空间本地化文本（函数内）     | ✅ 是    | `NSLOCTEXT("UI", "Start", "开始游戏")`                                        |
+| `FText::Format`     | 插入变量 / 句子模板拼接      | ✅ 是    | `FText::Format(NSLOCTEXT("UI", "Score", "分数：{0}"), FText::AsNumber(100))` |
+
+
+---
+
+### ✅ 1. `FText::FromString`（不支持翻译 ❌）
+
+```cpp
+FText Text = FText::FromString("Hello World");
+```
+
+> ⚠️ 用于日志、调试、非本地化 UI（建议仅在内部使用）
+
+---
+
+### ✅ 2. `LOCTEXT("Key", "内容")`（类内宏 ✅）
+
+```cpp
+#define LOCTEXT_NAMESPACE "MyClass"
+
+FText Title = LOCTEXT("StartGameTitle", "开始游戏");
+
+#undef LOCTEXT_NAMESPACE
+```
+
+* 宏定义的方式，使用当前文件/类名作为命名空间
+* 适合 `.cpp` 文件内大段静态文本
+
+---
+
+### ✅ 3. `NSLOCTEXT("Namespace", "Key", "内容")`（函数内 ✅）
+
+```cpp
+FText Tip = NSLOCTEXT("UI", "ExitTip", "你确定要退出游戏吗？");
+```
+
+* 推荐用于函数体内
+* 命名空间 `"UI"` 和 key `"ExitTip"` 用于后续翻译导出识别
+
+---
+
+### ✅ 4. `FText::Format`（格式化带变量 ✅）
+
+> 类似 `printf`、`std::format`，但支持 `FText` 本地化！
+
+
+```cpp
+FText FormatText = FText::Format(
+	NSLOCTEXT("UI", "PlayerStatus", "玩家 {0} 等级 {1}"),
+	FText::FromString("Alice"),
+	FText::AsNumber(10)
+);
+```
+
+---
+
+
+### ✅ 数值格式化辅助函数
+
+| 函数                         | 示例输出     |
+| -------------------------- | -------- |
+| `FText::AsNumber(1234)`    | `1,234`  |
+| `FText::AsPercent(0.75)`   | `75%`    |
+| `FText::AsCurrency(99.99)` | `￥99.99` |
+
+---
+
+# 60.TEXT()
+
+
+### ✅ `TEXT()` 是什么？
+
+* `TEXT("内容")` 是一个宏，用来生成**宽字符字符串（TCHAR\*）**
+* 例如：`TEXT("你好")` → `L"你好"`（Windows 平台）
+
+---
+
+### ✅ 为什么要用 `TEXT()`？
+
+| 原因            | 说明                                       |
+| ------------- | ---------------------------------------- |
+| 跨平台           | 自动适配不同平台的字符类型                            |
+| 支持中文          | 宽字符支持 Unicode（如中文）                       |
+| 与 Unreal 类型兼容 | `FString`、`FText`、`UE_LOG` 等都要求 `TCHAR*` |
+
+---
+
+### ✅ 正确用法示例：
+
+```cpp
+FString Str = TEXT("你好");
+FText Txt = FText::FromString(TEXT("欢迎"));
+UE_LOG(LogTemp, Log, TEXT("调试信息"));
+```
+
+---
+
+
+### ✅ 记忆口诀：
+
+> 所有字符串，加上 `TEXT()`，中文无忧，平台通吃！
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
