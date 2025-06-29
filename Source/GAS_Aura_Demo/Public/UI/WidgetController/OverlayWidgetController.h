@@ -16,20 +16,21 @@ struct FUIWidgetRow : public FTableRowBase
 	GENERATED_BODY()
 
 	UPROPERTY(EditAnywhere, BlueprintReadWrite)
-	FGameplayTag GameplayTag=FGameplayTag();
+	FGameplayTag GameplayTag = FGameplayTag();
 
 	UPROPERTY(EditAnywhere, BlueprintReadWrite)
-	FText Message=FText();
+	FText Message = FText();
 
 	UPROPERTY(EditAnywhere, BlueprintReadWrite)
 	TSubclassOf<UAuraUserWidget> MessageWidget;
 
 	UPROPERTY(EditAnywhere, BlueprintReadWrite)
-	UTexture2D* Image=nullptr;
+	UTexture2D* Image = nullptr;
 };
 
 DECLARE_DYNAMIC_MULTICAST_DELEGATE_OneParam(FOnAttributeChangedSignature, float, NewValue);
-DECLARE_DYNAMIC_MULTICAST_DELEGATE_OneParam(FMessageWidgetRowSignature,FUIWidgetRow,Row);
+
+DECLARE_DYNAMIC_MULTICAST_DELEGATE_OneParam(FMessageWidgetRowSignature, FUIWidgetRow, Row);
 
 
 /**
@@ -60,12 +61,11 @@ public:
 	FMessageWidgetRowSignature MessageWidgetRowDelegate;
 
 protected:
-
-	UPROPERTY(EditDefaultsOnly,BlueprintReadOnly,Category="Widget Data ")
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category="Widget Data ")
 	TObjectPtr<UDataTable> MessageWidgetDataTable;
-	
-	template<typename  T>
-	T* GetDataTableRowByTag(UDataTable* DataTable,const FGameplayTag& Tag);
+
+	template <typename T>
+	T* GetDataTableRowByTag(UDataTable* DataTable, const FGameplayTag& Tag);
 };
 
 template <typename T>

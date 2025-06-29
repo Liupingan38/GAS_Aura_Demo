@@ -39,6 +39,7 @@ public:
 	UFUNCTION(BlueprintCallable)
 	void SetPlayerControllerParams(const FWidgetControllerParams& WCParams);
 
+	UFUNCTION(BlueprintCallable)
 	virtual void BroadcastInitialValues();
 	virtual void BindCallbacksToDependencies();
 	
