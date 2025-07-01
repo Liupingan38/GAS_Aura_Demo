@@ -29,7 +29,10 @@ void AAuraCharacter::PossessedBy(AController* NewController)
 	// Init Ability Actor Info for the Server
 	InitAbilityActorInfo();
 	
-	SetOwner(NewController);
+	//SetOwner(NewController);设置OwnerActor
+	
+	AddCharacterAbilities();
+	
 }
 
 void AAuraCharacter::OnRep_PlayerState()
