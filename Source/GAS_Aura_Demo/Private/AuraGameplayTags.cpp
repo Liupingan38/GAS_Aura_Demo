@@ -54,4 +54,6 @@ void FAuraGameplayTags::InitializeNativeGameplayTags()
 		FName("InputTag.3"), FString(TEXT("键盘 3 键的输入标签")));
 	GameplayTags.InputTag_4 = UGameplayTagsManager::Get().AddNativeGameplayTag(
 		FName("InputTag.4"), FString(TEXT("键盘 4 键的输入标签")));
+	GameplayTags.Damage = UGameplayTagsManager::Get().AddNativeGameplayTag(
+		FName("Damage"), FString(TEXT("Damage")));
 }

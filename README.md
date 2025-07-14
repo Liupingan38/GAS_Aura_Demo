@@ -5237,8 +5237,323 @@ void UTargetDataUnderMouse::Activate()
 ### ✅在`UAuraAssetManager::StartInitialLoading()`中要加上`UAbilitySystemGlobals::Get().InitGlobalData();`才能使用TargetData:
 
 
+# 88.旋转的四元数
 
-# 88.PredictionKey
+
+## 🔧 为什么是四元数（`FQuat`）而不是欧拉角（`FRotator`）？
+
+### ✅ 四元数的优势：
+
+| 优势         | 描述                              |
+| ---------- | ------------------------------- |
+| **避免万向锁**  | 欧拉角存在 90° 旋转时丢失一个自由度的问题，四元数没有   |
+| **插值更平滑**  | 四元数支持 `SLERP`（球形线性插值），非常适合动画与缓动 |
+| **内存更小**   | 四元数是 4 个 float，而旋转矩阵是 9 个 float |
+| **高效组合旋转** | 多次旋转复合时，四元数乘法效率更高               |
+
+
+# BUG 3：多人游戏中，在蓝图中连接了End Ability，客户端不可以无限火球，而服务器可以 ，取消连接End Ability则都只可以发一发火球
+
+
+### ✅ 原因总结：
+
+这是因为 **`EndAbility()` 的调用位置错误**，导致客户端提前结束了技能，阻断了服务器的流程。
+
+---
+
+## 🔍 本质原理
+
+在 `GAS`（Gameplay Ability System）中：
+
+### 🔄 调用流程：
+
+* **客户端调用** `TryActivateAbility()` → 启动客户端模拟（local prediction）
+* 客户端执行 Ability 的 Blueprint 逻辑（会调用 `WaitGameplayEvent`）
+* 然后向服务端 **发出激活请求**
+* **服务器正式执行 `ActivateAbility()`** 并根据 GameplayEvent 开始执行真实逻辑
+
+⚠️ 如果你 **在客户端蓝图中调用了 `EndAbility()`**，那么客户端**提前结束了技能**（并会告诉服务器技能已结束），导致服务器不会处理 `SpawnProjectile()` 等关键函数。
+
+---
+
+## 🎯 具体分析你的蓝图
+
+你的蓝图流程是这样的：
+
+```
+Wait Gameplay Event
+     ↓
+Spawn Projectile
+     ↓
+End Ability  ← ⚠ 问题就在这！
+```
+
+在默认配置下，**这个 Blueprint 是在客户端执行的！**
+而你又在里面调用了 `EndAbility()`，这会：
+
+* 通知 GAS **技能已完成** ✅
+* **打断了服务器端的 Ability 激活流程** ❌
+* **导致 `ActivateAbility()` 根本没运行完，SpawnProjectile 被跳过！** ❌
+
+---
+
+## ✅ 正确做法
+
+### 方法一：**只让服务器调用 `EndAbility()`**
+
+你可以在 `SpawnProjectile()` 的最后添加：
+
+```cpp
+EndAbility(CurrentSpecHandle, CurrentActorInfo, CurrentActivationInfo, true, false);
+```
+
+即将 `EndAbility()` 的调用从蓝图中 **移除**，改到 C++ 的 **服务器端逻辑中执行**。
+
+这样客户端就不会错误地提前结束 Ability。
+
+---
+
+### 方法二：使用 Authority 分支判断
+
+在蓝图中这样写：
+
+```unreal
+Branch (Has Authority)
+├── True  →  Spawn Projectile → End Ability（✅服务器专属）
+└── False → 不做任何事或仅处理视觉特效（客户端预测）
+```
+
+这样就保证了只有服务器会调用 `EndAbility()`。
+
+---
+
+
+## ✅ 小结
+
+| 情况                           | 现象                                           |
+| ---------------------------- | -------------------------------------------- |
+| 在蓝图中调用 `EndAbility()`（客户端执行） | 会提前通知服务器“技能完成”，导致服务器无法发火球                    |
+| 不调用 `EndAbility()`           | 服务器能正常处理，但会留下技能未清理问题                         |
+| 正确方法                         | 只在服务器 `SpawnProjectile()` 后调用 `EndAbility()` |
+
+# BUG 4:Server端显示敌人血条 Client端不显示敌人血条的问题分析
+![](https://tuchuanglpa.oss-cn-beijing.aliyuncs.com/tuchuanglpa/20250713142636724.png)
+![](https://tuchuanglpa.oss-cn-beijing.aliyuncs.com/tuchuanglpa/20250713142704467.png)
+![](https://tuchuanglpa.oss-cn-beijing.aliyuncs.com/tuchuanglpa/20250713142717760.png)
+![](https://tuchuanglpa.oss-cn-beijing.aliyuncs.com/tuchuanglpa/20250713142733350.png)
+
+
+你遇到的“**客户端敌人血条始终为 0，但服务端正常**”的问题，核心原因在于：**客户端拿到的是 `BaseValue`（默认值 0），而不是当前经过 GameplayEffect（GE）修正过的 `CurrentValue`**。
+
+下面我结合你提供的文字与代码，从 **属性复制机制**、**GE赋值原理**、**Delegate绑定细节** 三方面讲解这个问题，并解释为什么用 `GetMaxHealth()` 代替 `Data.NewValue` 就解决了客户端血条不显示的问题。
+
+---
+
+## 🔧 1. 背景：属性复制、GE修改、OnRep调用顺序
+
+### 【属性注册】
+
+在 `GetLifetimeReplicatedProps` 中注册 `MaxHealth` 这样的属性时，使用了：
+
+```cpp
+DOREPLIFETIME_CONDITION_NOTIFY(UAuraAttributeSet, MaxHealth, COND_None, REPNOTIFY_Always);
+```
+
+* **`REPNOTIFY_Always`**：即使数值未变，也会触发 `OnRep_MaxHealth()`。
+* `GAMEPLAYATTRIBUTE_REPNOTIFY` 宏内部会调用 `SetBaseAttributeValueFromReplication()`，将服务端的 **BaseValue** 同步给客户端。
+
+### 【问题根源】
+
+你代码中的委托绑定如下：
+
+```cpp
+AbilitySystemComponent->GetGameplayAttributeValueChangeDelegate(AuraAS->GetMaxHealthAttribute()).AddLambda(
+	[this](const FOnAttributeChangeData& Data)
+	{
+		OnMaxHealthChanged.Broadcast(Data.NewValue); // ❌ 错误点：NewValue 是 BaseValue！
+	}
+);
+```
+
+这段代码中 `Data.NewValue` 实际上就是同步过来的 **BaseValue**，而你之前的 MaxHealth 是用 Infinite Duration 类型的 GameplayEffect 赋值的（GE 只会修改 **CurrentValue**），不会改变 BaseValue。因此：
+
+* **BaseValue 在客户端始终为 0**
+* 所以 `Data.NewValue == 0`，你广播给 UI 的也是 0，敌人血条显示就一直是空的
+
+---
+
+## ✅ 2. 正确做法：使用 `GetMaxHealth()` 替代 `Data.NewValue`
+
+`GetMaxHealth()` 会返回 **聚合后的最终 CurrentValue**，即：
+
+* 经过 **GameplayEffect 修正（Modifiers）**
+* 考虑 **Attribute Aggregator**（本质是一个值栈）
+
+> 也就是说，`GetMaxHealth()` = 当前我们看到的实际值，才是真正展示给玩家的。
+
+所以你修改成下面这样之后：
+
+```cpp
+AbilitySystemComponent->GetGameplayAttributeValueChangeDelegate(AuraAS->GetMaxHealthAttribute()).AddLambda(
+	[this, AuraAS](const FOnAttributeChangeData& Data)
+	{
+		OnMaxHealthChanged.Broadcast(AuraAS->GetMaxHealth()); // ✅ 正确，CurrentValue
+	}
+);
+```
+
+就能确保客户端显示的值和服务端一样了。
+
+---
+
+## 🧠 3. 补充说明：为什么 Server 一直是对的？
+
+> 你说“服务器端显示是正常的”——是因为服务器在调用 `BeginPlay()` 时，已经用 `GameMode` 给它添加了 GE，GE 成功设置了 MaxHealth 的 CurrentValue。
+
+而客户端没有 GameMode，不能靠 `AbilitySystemComponent->ApplyGameplayEffectToSelf()` 初始化自己，只能靠从服务端同步来的值。
+
+但同步的却是 BaseValue，而你用的是 `Data.NewValue`，所以是错的。
+
+---
+
+## 📌 总结对比
+
+| 项                | 服务端行为            | 客户端行为（原）                  | 客户端行为（修复后） |
+| ---------------- | ---------------- | ------------------------- | ---------- |
+| GE初始化            | 正常执行，赋值成功        | 无GameMode，赋值失败            | 不依赖GE初始化   |
+| `Data.NewValue`  | 正确（有值）           | 错误（BaseValue为0）           | -          |
+| `GetMaxHealth()` | 正确（CurrentValue） | 正确（CurrentValue同步自Server） | ✅显示正确      |
+| 结果               | 血条正常             | 血条为0                      | 血条正确显示     |
+
+---
+
+## ✅ 最终代码推荐（你已经基本写对）
+
+```cpp
+if (const UAuraAttributeSet* AuraAS = Cast<UAuraAttributeSet>(AttributeSet))
+{
+	AbilitySystemComponent->GetGameplayAttributeValueChangeDelegate(AuraAS->GetHealthAttribute()).AddLambda(
+		[this, AuraAS](const FOnAttributeChangeData& Data)
+		{
+			OnHealthChanged.Broadcast(AuraAS->GetHealth()); // ✅
+		}
+	);
+	AbilitySystemComponent->GetGameplayAttributeValueChangeDelegate(AuraAS->GetMaxHealthAttribute()).AddLambda(
+		[this, AuraAS](const FOnAttributeChangeData& Data)
+		{
+			OnMaxHealthChanged.Broadcast(AuraAS->GetMaxHealth()); // ✅
+		}
+	);
+
+	// 广播初始值
+	OnHealthChanged.Broadcast(AuraAS->GetHealth());
+	OnMaxHealthChanged.Broadcast(AuraAS->GetMaxHealth());
+}
+```
+
+# 89.`enum` & `enum class`
+
+
+### ✅ 一、总结一句话：
+
+> `enum class` 是 C++11 引入的“**强类型、安全作用域的枚举**”，它更现代、更安全，推荐在 **现代 C++ 项目中优先使用**。
+
+---
+
+### ✅ 二、主要区别对比
+
+| 特性           | `enum`（传统）   | `enum class`（强类型枚举）            |
+| ------------ | ------------ | ------------------------------ |
+| **作用域**      | 枚举值暴露在外部作用域中 | 枚举值限定在枚举名的作用域内                 |
+| **类型安全**     | 可隐式转换为整数     | 不会隐式转换为整数                      |
+| **命名冲突风险**   | 高，所有枚举项是全局可见 | 低，枚举项需要作用域限定                   |
+| **可指定底层类型**  | C++11 前不支持   | 支持（如 `enum class X : uint8_t`） |
+| **与整型比较/赋值** | 可以           | 必须显式转换                         |
+| **向前兼容性**    | 更容易与 C 代码交互  | 不兼容 C 的写法                      |
+
+---
+
+### ✅ 三、示例对比
+
+#### 1. 命名冲突与作用域
+
+```cpp
+enum Color { Red, Green, Blue };
+enum Fruit { Apple, Orange, Red }; // ❌ Red 冲突，编译失败
+
+enum class Direction { Left, Right };
+enum class Status { Left, OK };     // ✅ 不冲突
+```
+
+访问方式：
+
+```cpp
+Direction dir = Direction::Left;     // ✅ 必须加作用域
+Color c = Red;                       // ❌ 容易与其他 Red 冲突
+```
+
+---
+
+#### 2. 类型安全
+
+```cpp
+enum Color { Red, Green, Blue };
+int n = Red;      // ✅ 合法
+
+enum class Shape { Circle, Square };
+int m = Shape::Circle;  // ❌ 错误，不允许隐式转换
+```
+
+如需转换：
+
+```cpp
+int m = static_cast<int>(Shape::Circle);  // ✅ 必须显式转换
+```
+
+---
+
+#### 3. 指定底层类型（仅限 enum class）
+
+```cpp
+enum class ErrorCode : uint8_t { OK = 0, NotFound = 1 };
+```
+
+而传统 `enum` 默认底层类型是 `int`，不能自定义。
+
+---
+
+### ✅ 四、何时用哪个？
+
+| 情况                | 推荐用法                         |
+| ----------------- | ---------------------------- |
+| 与 C 代码交互、简单枚举     | `enum`                       |
+| C++ 项目，追求类型安全、封装性 | ✅ `enum class`               |
+| 需要底层控制（如网络协议字节）   | ✅ `enum class`（可设 `uint8_t`） |
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+# .PredictionKey
 ![](https://tuchuanglpa.oss-cn-beijing.aliyuncs.com/tuchuanglpa/20250707223153403.png)
 
 ![](https://tuchuanglpa.oss-cn-beijing.aliyuncs.com/tuchuanglpa/20250707223659676.png)
@@ -5247,15 +5562,9 @@ void UTargetDataUnderMouse::Activate()
 
 
 
+
+
 # todo：ue中的智能指针
-
-
-
-
-
-
-
-
 
 
 
