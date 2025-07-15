@@ -5530,6 +5530,151 @@ enum class ErrorCode : uint8_t { OK = 0, NotFound = 1 };
 | C++ 项目，追求类型安全、封装性 | ✅ `enum class`               |
 | 需要底层控制（如网络协议字节）   | ✅ `enum class`（可设 `uint8_t`） |
 
+# 90.SetByCaller
+
+
+> **SetByCaller 之所以要一个 Tag，是为了在运行时用标签作为“键”来动态查找数值**。这样可以让一个 `GameplayEffect` 更加灵活、可重用、支持多个动态值的输入。
+
+
+```cpp
+UAbilitySystemBlueprintLibrary::AssignTagSetByCallerMagnitude(SpecHandle, AuraGameplayTags.Damage, 50.f);
+```
+
+* **关键点：设置一个 SetByCaller 类型的伤害值**，这里的 tag 是 `AuraGameplayTags.Damage`，值是 `50.f`。
+* 这句的意思是：“我现在告诉这个伤害效果，它的 `SetByCaller` 伤害数值是 50。”
+
+
+### ✅ `AssignTagSetByCallerMagnitude()` 的作用：
+
+| 参数           | 说明                                              |
+| ------------ | ----------------------------------------------- |
+| `SpecHandle` | 要赋值的 GameplayEffectSpec                         |
+| `Tag`        | 你在 GameplayEffect 中配置的 `SetByCaller` 输入 key（标签） |
+| `Magnitude`  | 具体传入的数值，比如 `50.f`                               |
+
+---
+
+
+## 🎯 总结
+
+| 问题                           | 回答                                                |
+| ---------------------------- | ------------------------------------------------- |
+| **为什么 `SetByCaller` 要 tag？** | 因为你可能传多个不同的值，用 tag 作为“键”来标识每个值的含义，支持动态配置和多用途      |
+| **能直接传值不用 tag 吗？**           | ❌ 不行，GAS 必须使用 `FGameplayTag` 来索引 `SetByCaller` 数据 |
+| **用法类似什么？**                  | 类似传字典（`key → value`），tag 是 key，值是 float           |
+* tag 还能让 GameplayCue 接收到值（比如爆炸动画根据 Radius 或 Damage 大小改变表现）。
+* 
+---
+
+## 🧠 为什么要用 Tag？
+
+因为一个 `GameplayEffect` 可能有多个动态输入项，比如：
+
+| 作用     | SetByCaller Tag 示例       |
+| ------ | ------------------------ |
+| 伤害值    | `SetByCaller.Damage`     |
+| 爆炸半径   | `SetByCaller.Radius`     |
+| 持续时间   | `SetByCaller.Duration`   |
+| 移动速度减缓 | `SetByCaller.SlowAmount` |
+
+你不能直接用一个浮点数去描述这些不同语义的数据。所以 GAS 规定：**你用 `FGameplayTag` 做 key，每个动态值都带名字，方便查找、管理和调试。**
+
+# 91.BlueprintNativeEvent（蓝图可重写）
+你这段代码的作用是：**让 `AAuraCharacterBase` 这个类可以从蓝图或 C++ 中返回“受击动画蒙太奇（HitReactMontage）”，并支持蓝图重写。**
+
+我们来分三段讲清楚它的含义和用法：
+
+---
+
+## 1. ✅ `UFUNCTION(BlueprintNativeEvent, BlueprintCallable)` 是什么意思？
+
+这是一种 Unreal 的声明方式，表示这个函数：
+
+* **可以被蓝图调用**（`BlueprintCallable`）
+* **可以在蓝图中被重写实现**（`BlueprintNativeEvent`）
+* **也可以在 C++ 中有默认实现**
+
+这一行：
+
+```cpp
+UFUNCTION(BlueprintNativeEvent, BlueprintCallable)
+UAnimMontage* GetHitReactMontage();
+```
+
+表示声明了一个“可以被蓝图访问、也可以被蓝图重写”的虚函数，返回一个 `UAnimMontage*`。
+
+---
+
+## 2. ✅ `GetHitReactMontage_Implementation()` 是什么？
+
+当你使用 `BlueprintNativeEvent` 时，Unreal 要求你实现一个带 `_Implementation` 后缀的版本作为 C++ 的默认行为：
+
+```cpp
+virtual UAnimMontage* GetHitReactMontage_Implementation() override;
+```
+
+这不是你手动命名的，而是 **Unreal 自动生成的函数签名要求**。
+
+如果蓝图没有覆盖 `GetHitReactMontage()`，那就会调用 `_Implementation()` 版本。
+
+---
+
+## 3. ✅ 函数体是干嘛的？
+
+```cpp
+UAnimMontage* AAuraCharacterBase::GetHitReactMontage_Implementation()
+{
+    return HitReactMontage;
+}
+```
+
+这个函数返回了成员变量 `HitReactMontage`，它通常是在类中预设的一个动画资源（例如角色被攻击时播放的受击动画）。
+
+---
+
+## 📌 蓝图中的行为
+
+* 如果你**没有在蓝图中重写** `GetHitReactMontage()`，那就会使用 `_Implementation()` 返回的 `HitReactMontage`。
+* 如果你**在蓝图中重写**了 `GetHitReactMontage()`，就会执行蓝图的版本，忽略 `_Implementation()`。
+
+# 92.Slot 'DefaultSlot'（Animation Montage）
+
+## ✅ 什么是 `Slot 'DefaultSlot'`？
+
+**`Slot 'DefaultSlot'` 是 Unreal Engine 动画系统中的一个特殊节点，主要用于播放 Animation Montage（动画蒙太奇）**。
+
+它的作用就是：
+
+> 📌 **告诉动画蓝图：我在这里“预留一个位置”，当外部（比如技能或 C++）播放 Montage 动画时，把动画插进来播放。**
+
+---
+
+## ✅ 使用要求
+
+| 条件                                      | 要求            |
+| --------------------------------------- | ------------- |
+| AnimGraph 中有 `Slot 'DefaultSlot'` 节点    | ✔ 必须存在，否则播放无效 |
+| 播放的 Montage 的 Slot 名设置为 `"DefaultSlot"` | ✔ 必须一致        |
+| Slot 节点连接到最终输出（Output Animation Pose）   | ✔ 否则动画无法应用到模型 |
+
+---
+
+## 🧩 简单示意图流程：
+
+```
+[BlendSpace / StateMachine] → [Slot 'DefaultSlot'] → [Output Pose]
+```
+
+Slot 节点接收默认动画（如奔跑）+ 插播 Montage（如攻击动画），两者融合后输出到角色模型。
+
+---
+
+## 🎯 总结一句话：
+
+> `Slot 'DefaultSlot'` 是 Montage 能插播动画的“插槽接口”，你要在 AnimGraph 中插上这个接口，Montage 才知道往哪里放动画。
+
+
+
 
 
 
