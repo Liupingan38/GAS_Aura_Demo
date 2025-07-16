@@ -60,7 +60,7 @@ public:
 	virtual void PreAttributeChange(const FGameplayAttribute& Attribute, float& NewValue) override;
 	virtual void PostGameplayEffectExecute(const struct FGameplayEffectModCallbackData& Data) override;
 
-	TMap<FGameplayTag,TStaticFuncPtr<FGameplayAttribute()> > TagsToAttributesMap;
+	TMap<FGameplayTag, TStaticFuncPtr<FGameplayAttribute()>> TagsToAttributesMap;
 
 	/*
 	 * Vital Attribute
@@ -138,7 +138,7 @@ public:
 	/*
 	 * Meta Attributes
 	 */
-	UPROPERTY(BlueprintReadOnly,Category="Meta Attributes")
+	UPROPERTY(BlueprintReadOnly, Category="Meta Attributes")
 	FGameplayAttributeData IncomingDamage;
 	ATTRIBUTE_ACCESSORS(UAuraAttributeSet, IncomingDamage);
 
@@ -179,4 +179,5 @@ public:
 
 private:
 	void SetEffectProperties(const struct FGameplayEffectModCallbackData& Data, FEffectProperties& Props) const;
+	void ShowFloatingText(const FEffectProperties& Props, float Damage) const;
 };

@@ -11,9 +11,11 @@
 #include "NavigationSystem.h"
 #include "AbilitySystem/AuraAbilitySystemComponent.h"
 #include "Components/SplineComponent.h"
+#include "GameFramework/Character.h"
 #include "Input/AuraInputComponent.h"
 #include "Interaction/EnemyInterface.h"
 #include "ProfilingDebugging/CookStats.h"
+#include "UI/Widget/DamageTextComponent.h"
 
 AAuraPlayerController::AAuraPlayerController()
 {
@@ -27,6 +29,18 @@ void AAuraPlayerController::PlayerTick(float DeltaTime)
 
 	CursorTrace();
 	AutoRun();
+}
+
+void AAuraPlayerController::ShowDamageNumber_Implementation(float DamageAmount, ACharacter* TargetCharacter)
+{
+	if (IsValid(TargetCharacter) && DamageTextComponentClass)
+	{
+		UDamageTextComponent* DamageTextComponent=NewObject<UDamageTextComponent>(TargetCharacter,DamageTextComponentClass);
+		DamageTextComponent->RegisterComponent();
+		DamageTextComponent->AttachToComponent(TargetCharacter->GetRootComponent(),FAttachmentTransformRules::KeepRelativeTransform);
+		DamageTextComponent->DetachFromComponent(FDetachmentTransformRules::KeepWorldTransform);
+		DamageTextComponent->SetDamageText(DamageAmount);
+	}
 }
 
 void AAuraPlayerController::AutoRun()
@@ -129,7 +143,7 @@ void AAuraPlayerController::AbilityInputTagReleased(FGameplayTag InputTag)
 	}
 	if (GetASC()) GetASC()->AbilityInputTagReleased(InputTag); //传递左键技能的Tag
 
-	if (!bTargeting && !bShiftPressed)//瞄准敌人或按住shift键都不是短按！
+	if (!bTargeting && !bShiftPressed) //瞄准敌人或按住shift键都不是短按！
 	{
 		const APawn* ControlledPawn = GetPawn();
 		if (FollowTime <= ShortPressedThreshold && ControlledPawn) //自动移动(短按)

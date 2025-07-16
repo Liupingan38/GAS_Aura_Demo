@@ -9,7 +9,9 @@
 #include "GameplayEffectExtension.h"
 #include "GameFramework/Character.h"
 #include "Interaction/CombatInterface.h"
+#include "Kismet/GameplayStatics.h"
 #include "Net/UnrealNetwork.h"
+#include "Player/AuraPlayerController.h"
 
 UAuraAttributeSet::UAuraAttributeSet()
 {
@@ -89,14 +91,14 @@ void UAuraAttributeSet::SetEffectProperties(const struct FGameplayEffectModCallb
 		Props.SourceController = Props.SourceASC->AbilityActorInfo.Get()->PlayerController.Get();
 		if (Props.SourceController == nullptr && Props.SourceAvatarActor != nullptr)
 		{
-			if (APawn* Pawn = Cast<APawn>(Props.SourceAvatarActor))
+			if (const APawn* Pawn = Cast<APawn>(Props.SourceAvatarActor))
 			{
 				Props.SourceController = Pawn->GetController();
 			}
 		}
-		if (Props.SourceController != nullptr)
+		if (Props.SourceController)
 		{
-			Props.SourceCharacter = Cast<ACharacter>(Props.SourceController->GetCharacter());
+			Props.SourceCharacter = Cast<ACharacter>(Props.SourceController->GetPawn());
 		}
 	}
 	//获取Target的Avatar、ASC、Controller、Character
@@ -134,7 +136,7 @@ void UAuraAttributeSet::PostGameplayEffectExecute(const struct FGameplayEffectMo
 		{
 			const float NewHealth = GetHealth() - LocalIncomingDamage;
 			SetHealth(FMath::Clamp(NewHealth, 0.f, GetMaxHealth()));
-			
+
 			if (const bool bFatal = NewHealth <= 0.f)
 			{
 				if (ICombatInterface* CombatInterface = Cast<ICombatInterface>(Props.TargetAvatarActor))
@@ -148,6 +150,19 @@ void UAuraAttributeSet::PostGameplayEffectExecute(const struct FGameplayEffectMo
 				TagContainer.AddTag(FAuraGameplayTags::Get().Effects_HitReact);
 				Props.TargetASC->TryActivateAbilitiesByTag(TagContainer);
 			}
+			ShowFloatingText(Props, LocalIncomingDamage);
+		}
+	}
+}
+
+void UAuraAttributeSet::ShowFloatingText(const FEffectProperties& Props, float Damage) const
+{
+	if (Props.TargetCharacter != Props.SourceCharacter)
+	{
+		if (AAuraPlayerController* PC = Cast<AAuraPlayerController>(
+			UGameplayStatics::GetPlayerController(Props.SourceCharacter, 0)))
+		{
+			PC->ShowDamageNumber(Damage, Props.TargetCharacter);
 		}
 	}
 }
