@@ -85,4 +85,8 @@ void FAuraGameplayTags::InitializeNativeGameplayTags()
 	//~ Effects
 	GameplayTags.Effects_HitReact = UGameplayTagsManager::Get().AddNativeGameplayTag(
 		FName("Effects.HitReact"), FString(TEXT("受击反应时赋予标签")));
+
+	//~ 角色能力
+	GameplayTags.Abilities_Attack = UGameplayTagsManager::Get().AddNativeGameplayTag(
+		FName("Abilities.Attack"), FString(TEXT("近战敌人的近战攻击")));
 }

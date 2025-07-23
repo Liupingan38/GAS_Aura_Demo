@@ -6248,8 +6248,6 @@ Modifiers:
 
 # 100.**属性捕获定义（Attribute Capture Defination）** 
 
-
-
 ## 🔍 全部代码讲解
 
 ```cpp
@@ -6326,7 +6324,800 @@ ExecutionParams.AttemptCalculateCapturedAttributeMagnitude(
 	GetDamageStatics().ArmorDef, EvaluationParameters, ArmorValue);
 ```
 
+# 101.ue中的智能指针和指针包装器
 
+在 Unreal Engine（UE）尤其是 Gameplay Ability System（GAS） 中，**智能指针** 的应用无处不在。它们是内存安全管理的核心工具，避免了手动 `delete` 带来的泄漏或悬挂指针问题。
+
+---
+
+## 🧠 你需要了解的三种主要智能指针
+
+| 智能指针类型                            | 头文件                                    | 生命周期控制                 | 用法简述                       |
+| --------------------------------- | -------------------------------------- | ---------------------- | -------------------------- |
+| `TSharedPtr<T>` / `TSharedRef<T>` | `#include "Templates/SharedPointer.h"` | 引用计数（适合跨模块共享）          | UI、数据模型、非 UObject 的逻辑控制    |
+| `TWeakObjectPtr<UObject>`         | `#include "UObject/WeakObjectPtr.h"`   | 弱引用 UObject（避免引用计数）    | 常用于缓存、GAS 等模块存 Actor、ASC 等 |
+| `TStrongObjectPtr<UObject>`（较少用）  | `#include "UObject/StrongObjectPtr.h"` | 强引用 UObject（等价于 GC 标记） | 更稳定地保存临时 UObject           |
+
+> ✅ 注意：UObject 是 UE 的垃圾回收对象，不能用 `TSharedPtr<UObject>`！会导致双重释放！
+
+---
+
+## ✅ 在 UE/GAS 中的典型应用
+
+---
+
+### 1️⃣ `TWeakObjectPtr<UAbilitySystemComponent>` — GAS 中最常见！
+
+- 用于缓存 **AbilitySystemComponent** 或 **Actor**，避免强引用导致循环引用或内存泄漏。
+- GAS 的很多系统中使用 **Targeting** 时会存下目标 Actor，用 WeakPtr 保证目标 Actor 被销毁后不会访问非法内存。
+- 用 WeakObjectPtr 是因为：
+
+  * **你不确定施法者是否还活着**
+  * **但你又需要追踪这次效果的来源**
+  
+#### ✅ 示例场景：
+
+```cpp
+TWeakObjectPtr<UAbilitySystemComponent> CachedTargetASC;
+
+void MyFunction()
+{
+    if (CachedTargetASC.IsValid())
+    {
+        CachedTargetASC->ApplyGameplayEffectToSelf(...);
+    }
+}
+```
+
+#### ✅ 为什么使用它？
+
+* ASC 是 UObject 派生的，有 GC 管理
+* 如果你强引用它（比如 `TSharedPtr`），GC 无法释放，可能导致逻辑错误
+* 使用 `TWeakObjectPtr` 可以随时判断是否仍有效
+
+---
+
+### 2️⃣ `TSharedPtr` / `TSharedRef` — GAS 中用于逻辑对象（非 UObject）
+
+虽然 GAS 中大多数类都基于 UObject，但在 **能力数据结构、任务、Tag 处理、Ability UI 等非 UObject 对象** 中，SharedPtr 是首选。
+
+#### ✅ 示例：共享一个能力表结构体
+
+```cpp
+TSharedPtr<FAbilityMeta> AbilityMeta = MakeShared<FAbilityMeta>();
+AbilityMeta->Name = FText::FromString("Fireball");
+```
+
+你可以安全传递 `AbilityMeta` 给 UI 层、网络 RPC 或 AI 模块，不必担心内存释放问题。
+
+---
+
+## 🚫 什么情况不能用智能指针？
+
+### ❌ 不要对 `UObject` 使用 `TSharedPtr<UObject>`
+
+> Unreal 的 UObject 是 GC 控制的，用 SharedPtr 会导致“双重释放”崩溃。
+
+🔄 **替代方案：**
+
+| 需求                     | 推荐用法                                |
+| ---------------------- | ----------------------------------- |
+| 想安全引用 UObject          | 用 `TWeakObjectPtr<UObject>`         |
+| 需要强引用 UObject 并托管其生命周期 | 用 `TStrongObjectPtr<UObject>`（高级用法） |
+
+---
+
+## ✅ 总结：GAS 中智能指针最佳实践
+
+| 使用场景                   | 推荐指针                        | 原因                |
+| ---------------------- | --------------------------- | ----------------- |
+| 引用 ASC、Actor、Ability 时 | `TWeakObjectPtr`            | 防止悬挂指针、GC 安全      |
+| 逻辑层非 UObject 的数据共享     | `TSharedPtr` / `TSharedRef` | 自动内存管理，易共享        |
+| UI 层传递能力数据             | `TSharedPtr`                | 易与 Slate / UMG 绑定 |
+| 缓存 UObject 临时引用        | `TStrongObjectPtr`          | 强保留，但不常用          |
+
+
+
+---
+
+## ✅ UE 中常见的智能指针 & 对象指针包装器一览
+
+| 类型                          | 是否支持 UObject | 生命周期控制     | 主要用途                  | GC 安全 |
+| --------------------------- | ------------ | ---------- | --------------------- | ----- |
+| `TSharedPtr<T>`             | ❌            | 引用计数       | 非 UObject 数据共享        | ✘     |
+| `TSharedRef<T>`             | ❌            | 引用计数，非空    | 非 UObject 数据共享（不允许为空） | ✘     |
+| `TWeakPtr<T>`               | ❌            | 弱引用（观察）    | 与 TSharedPtr 配套       | ✘     |
+| `TUniquePtr<T>`             | ❌            | 独占所有权      | 单一持有者，自动析构            | ✘     |
+| `TWeakObjectPtr<UObject>`   | ✅            | 弱引用（GC 安全） | 持有 UObject 引用但不阻止 GC  | ✅     |
+| `TStrongObjectPtr<UObject>` | ✅            | 强引用（GC 安全） | 临时拥有 UObject 并保持引用    | ✅     |
+| `TObjectPtr<UObject>`       | ✅            | 全局默认推荐     | 替代原生裸指针，支持 GC 跟踪      | ✅（推荐） |
+
+---
+
+## 🧠 一句总结这些指针的特点
+
+###  🚫 非 UObject 专用指针（无法与 GC 协同）：
+
+### 1️⃣ `TSharedPtr<T>` / `TSharedRef<T>`
+
+* 用于 **逻辑对象、结构体、数据模型等非 UObject**
+* 引用计数自动管理生命周期
+* 不能用于 `UObject`（GC 冲突，可能崩溃）
+
+```cpp
+TSharedPtr<FMyStruct> MyData = MakeShared<FMyStruct>();
+```
+
+---
+
+### 2️⃣ `TUniquePtr<T>`
+
+* 用于 **独占所有权的非 UObject 对象**
+* 离开作用域自动销毁
+
+```cpp
+TUniquePtr<FMyManager> Manager = MakeUnique<FMyManager>();
+```
+
+---
+
+### 3️⃣ `TWeakPtr<T>`
+
+* 跟踪 `TSharedPtr<T>`，不影响其引用计数
+* 多用于观察者模式、延迟调用等场景
+
+---
+
+### ✅ UObject 友好型指针（GC 安全）
+
+### 4️⃣ `TWeakObjectPtr<UObject>`
+
+* 保存 `UObject` 的弱引用
+* 当目标被 GC 销毁时自动失效，可用 `IsValid()` 判断
+
+```cpp
+TWeakObjectPtr<AActor> TargetActor;
+if (TargetActor.IsValid()) { /* 安全访问 */ }
+```
+
+---
+
+### 5️⃣ `TStrongObjectPtr<UObject>` （高级用法）
+
+* 类似“GC 管理下的智能指针”，**强引用 + 不参与 UObject 生命周期管理**
+* 常用于临时缓存对象但不希望它被 GC 回收
+
+```cpp
+TStrongObjectPtr<UTexture> CachedTexture(SomeTexture);
+```
+
+---
+
+### 6️⃣ `TObjectPtr<UObject>`（UE5 推荐使用）
+
+> 🔥 **Unreal Engine 5 中官方推荐替代原生指针的方式**。
+
+* 支持 GC 标记（UnrealHeaderTool 会识别）
+* 写法和原生裸指针几乎一样，但更加安全
+* 适用于类成员变量
+
+#### 示例：
+
+```cpp
+UPROPERTY()
+TObjectPtr<USkeletalMesh> SkeletalMeshAsset;
+```
+
+替代老写法：
+
+```cpp
+UPROPERTY()
+USkeletalMesh* SkeletalMeshAsset; // UE5 不推荐
+```
+
+---
+
+## ✅ 实用对比表：什么时候用哪种指针？
+
+| 需求场景                  | 推荐指针                        | 原因                 |
+| --------------------- | --------------------------- | ------------------ |
+| 非 UObject 数据共享（模型、配置） | `TSharedPtr` / `TSharedRef` | 引用计数，高效            |
+| 非 UObject 独占管理        | `TUniquePtr`                | 离开作用域自动释放          |
+| 观察非 UObject 生命周期      | `TWeakPtr`                  | 非强引用               |
+| 临时缓存 UObject 且不阻止 GC  | `TWeakObjectPtr`            | GC 安全，常用于 GAS/AI   |
+| 强保留 UObject 避免 GC     | `TStrongObjectPtr`          | 少数高级场景使用           |
+| 定义 UObject 成员变量       | `TObjectPtr`                | 推荐 UE5 默认做法，GC 安全  |
+| 定义 UObject 成员变量（老写法）  | `UObject*`                  | UE4/兼容旧项目，可被 GC 标记 |
+
+---
+
+## 📌 GAS 中常见组合使用举例
+
+| 场景                             | 示例指针                                      |
+| ------------------------------ | ----------------------------------------- |
+| 缓存 AbilitySystemComponent      | `TWeakObjectPtr<UAbilitySystemComponent>` |
+| 储存当前目标                         | `TWeakObjectPtr<AActor>`                  |
+| 储存临时 Ability 元数据               | `TSharedPtr<FAbilityData>`                |
+| GAS Execution 中引用 AttributeSet | `TObjectPtr<UAttributeSet>`（如成员属性）        |
+
+---
+
+## 🚨 使用建议与陷阱
+
+| ⚠️ 不要这样用                            | ❌ 原因                   |
+| ----------------------------------- | ---------------------- |
+| `TSharedPtr<UObject>`               | 会导致 GC 无法管理对象（内存泄漏或崩溃） |
+| 使用原始裸指针存 UObject                    | 不参与 GC，容易悬挂或野指针        |
+| 不加 `UPROPERTY()` 使用 `TObjectPtr` 成员 | 无法 GC 标记，等同裸指针         |
+
+---
+
+## ✅ 总结建议
+
+> 🔧 **面向 UObject：** 用 `TObjectPtr`, `TWeakObjectPtr`, `TStrongObjectPtr`（GC 安全）
+>
+> 📦 **面向非 UObject：** 用 `TSharedPtr`, `TWeakPtr`, `TUniquePtr`（高效、RAII）
+
+
+
+# 102.Ability CDO 和 AbilityInstanceNotReplicated
+
+## 🔧 二、什么是 Ability CDO？
+
+### ✅ 概念
+
+**CDO = Class Default Object**
+每个 UObject 派生类，**都会自动创建一个默认对象（CDO）**，它代表类的初始状态，是单例的。
+
+### ✅ 在火球术中
+
+`UAuraFireballAbility::StaticClass()->GetDefaultObject()` 就是火球术的默认模板。
+
+### ✅ 举个例子
+
+```cpp
+UGameplayAbility* FireballCDO = UAuraFireballAbility::StaticClass()->GetDefaultObject();
+```
+
+### ✅ 用途
+
+* 存储默认数据（冷却时间、消耗、Tag）
+* 不参与执行逻辑
+* 所有未实例化的情况，GAS 都会直接使用 CDO
+
+---
+
+## 👥 三、什么是 Ability 实例（AbilityInstanceNotReplicated）？
+
+### ✅ 概念
+
+当技能激活时，如果你设置了要实例化，**GAS 会从 CDO 复制出一个实例对象**来运行技能逻辑。
+
+* 它是一个 `UGameplayAbility*` 对象
+* 持有它的是 `FGameplayAbilitySpec.AbilityInstanceNotReplicated`
+
+### ✅ 举例
+
+```cpp
+UGameplayAbility* Instance = Spec->AbilityInstanceNotReplicated;
+```
+
+### ✅ 特点
+
+* 每个角色都有自己的实例（不会共用）
+* 可以保存临时变量、状态（如：计时器、伤害倍率）
+* 实际执行逻辑发生在这个实例中，而不是 CDO
+
+---
+
+## 🌐 四、什么是网络复制 / 网络同步？
+
+### ✅ 网络复制（Replication）
+
+UE5 的网络同步是基于服务端驱动的。
+
+* 服务端运行 GAS，创建 Ability 实例、激活技能
+* 客户端通过 **复制（Replication）机制** 获得同步数据
+
+比如：
+
+* 火球施法动作、命中特效要客户端看到
+* 技能冷却、状态变化要客户端同步
+
+### ✅ AbilityInstanceNotReplicated 是什么意思？
+
+就是说：这个技能实例 **不会被复制到客户端**，仅存在于服务器上。
+
+* 多用于服务端控制技能逻辑
+* 客户端只看效果表现（通过 GameplayCue、动画等）
+
+---
+
+## 🧬 五、什么是三种 InstancingPolicy（实例化策略）
+
+你可以在 `UGameplayAbility` 子类中设置这个枚举字段：
+
+```cpp
+EGameplayAbilityInstancingPolicy InstancingPolicy;
+```
+
+---
+
+### 🔹 1️⃣ NonInstanced（不实例化，使用 CDO）
+
+* 只使用 AbilityCDO，不生成实例
+* 内存开销最小，不能保存技能状态
+* 所有角色共享这个火球术对象（是 CDO）
+
+#### 🔍 适合：
+
+* 无状态技能、一次性效果（如加一个 Buff）
+
+---
+
+### 🔹 2️⃣ InstancedPerActor（每个角色一个实例）
+
+* 每个角色激活这个技能前，会从 CDO 复制出一个实例，存入 `AbilityInstanceNotReplicated`
+* 生命周期随角色存在
+* 可以在类里保存变量（如冷却时间、次数等）
+
+#### 🔍 适合：
+
+* 中等复杂度技能，状态跟随角色，如持续施法
+
+---
+
+### 🔹 3️⃣ InstancedPerExecution（每次激活一个实例）
+
+* 每次激活时，创建一个新实例（服务端本地）
+* 比如一个火球施法完再冷却期间，角色可以放另一个技能，也可以继续接另一个火球
+* 可以保存本次激活的局部状态（如攻击力、暴击）
+
+#### 🔍 适合：
+
+* 高度状态隔离、协程逻辑复杂的技能
+
+---
+
+## 🎯 最后结合火球术来举例说明三者区别
+
+| 场景          | CDO       | InstancedPerActor          | InstancedPerExecution |
+| ----------- | --------- | -------------------------- | --------------------- |
+| 火球的冷却时间     | ✔ 存在于 CDO | ✔ 每个实例拷贝一份                 | ✔ 每次都有一份              |
+| 火球发射逻辑在哪执行？ | ❌ 不可执行    | ✔ 在实例中                     | ✔ 在每次新建的实例中           |
+| 是否能保存临时状态？  | ❌         | ✔（全局）                      | ✔（局部）                 |
+| 是否可共用对象？    | ✔         | ❌                          | ❌                     |
+| 是否被网络复制？    | ✘         | ✘（NotReplicated）或 ✔（需特殊设置） | 通常 ✘                  |
+
+# 103.GC（垃圾回收机制）
+
+## 🔄 Unreal GC 垃圾回收流程（简化版）
+
+### 🧬 原则：标记-清除（Mark & Sweep）
+
+```plaintext
+1. GC 开始
+2. 遍历所有有 `UPROPERTY()` 标记的 UObject 成员
+3. 构建“引用图”：哪些对象引用了哪些对象
+4. 标记所有可以被“到达”的对象为“存活”
+5. 其余对象标记为“不可达”
+6. 销毁所有“不可达”的 UObject 实例
+```
+
+---
+
+## 🛡️ GC 时强弱引用行为对比
+
+| 步骤     | 强引用（`TObjectPtr`） | 弱引用（`TWeakObjectPtr`）     |
+| ------ | ----------------- | ------------------------- |
+| GC 标记  | ✅ 被标记为活跃对象        | ❌ 被忽略                     |
+| 是否可达   | ✅ 被认为“有人在用”       | ❌ 不算作引用来源                 |
+| 是否销毁   | ❌ 不会销毁            | ✅ 如果无其他强引用，会被销毁           |
+| GC 后行为 | 保持有效              | 自动失效（`IsValid()` 为 false） |
+
+# 104.自定义EffectContext
+## 🎯 建议背下这一句话：
+
+> 自定义 `FGameplayEffectContext`，**必须同时 override `GetScriptStruct()`、`Duplicate()`、`NetSerialize()`，并定义 `TStructOpsTypeTraits`，否则自定义字段无法被识别、复制和同步。**
+
+## ✅ 一、`virtual` 函数为啥还要在子类中重复实现？
+
+> 问：父类 `FGameplayEffectContext` 已经定义了这些 `virtual` 函数（如 `GetScriptStruct()`、`Duplicate()`、`NetSerialize()`），为什么子类还要 override 一遍？
+
+### ✅ 原因：**为了支持反射、自定义复制和网络序列化，必须重写它们。**
+
+### 1️⃣ `GetScriptStruct()`：
+
+必须返回自己的 `StaticStruct()`，否则 UE 不知道这个子类是什么类型（只会当作父类用）。
+
+```cpp
+virtual UScriptStruct* GetScriptStruct() const override
+{
+	return StaticStruct(); // 这是关键，告诉系统我是谁
+}
+```
+
+* 如果不 override，它会返回 `FGameplayEffectContext::StaticStruct()`，你自定义的字段 `bIsCriticalHit`、`bIsBlockedHit` 就完全丢失了！
+
+---
+
+### 2️⃣ `Duplicate()`：
+
+复制上下文用于：
+
+* 伤害计算结束后复制结果（比如暴击、格挡状态）
+* 网络发送用
+
+```cpp
+FAuraGameplayEffectContext* NewContext = new FAuraGameplayEffectContext();
+*NewContext = *this; // 拷贝自定义字段
+```
+
+⚠️ 如果你不 override，会使用父类的 shallow copy，`bIsCriticalHit` 等字段不会被复制，造成 Bug！
+
+---
+
+### 3️⃣ `NetSerialize()`：
+
+默认 `FGameplayEffectContext` 的网络序列化只处理基础字段，不知道你扩展了什么。
+
+```cpp
+virtual bool NetSerialize(FArchive& Ar, class UPackageMap* Map, bool& bOutSuccess) override;
+```
+
+你必须手动序列化你扩展的字段，否则这些字段在客户端就都是默认值（如 `false`），逻辑完全错乱。
+
+---
+
+## ✅ 二、为什么还要写 `TStructOpsTypeTraits`？
+
+```cpp
+template<>
+struct TStructOpsTypeTraits< FAuraGameplayEffectContext > : public TStructOpsTypeTraitsBase2< FAuraGameplayEffectContext >
+{
+	enum
+	{
+		WithNetSerializer = true,
+		WithCopy = true
+	};
+};
+```
+
+### ✔ 这是告诉 Unreal：
+
+| 标志                         | 作用                                                                |
+| -------------------------- | ----------------------------------------------------------------- |
+| `WithNetSerializer = true` | 告诉 UE 这个结构体使用自定义 `NetSerialize()`                                 |
+| `WithCopy = true`          | 告诉 UE 这个结构体支持 **深拷贝**，特别是内部的 `TSharedPtr<FHitResult>` 等复杂数据需要显式拷贝 |
+
+如果你不加：
+
+* UE 不会使用你的 `NetSerialize()`，字段永远不会在网络中同步
+* `TSharedPtr` 成员会浅拷贝，造成引用错误、内存错误
+
+---
+
+## ✅ 三、总结为什么都不能省
+
+| 重写函数                   | 目的        | 不写的后果                            |
+| ---------------------- | --------- | -------------------------------- |
+| `GetScriptStruct()`    | 注册子类结构反射  | UE 不知道你是谁，视作父类处理                 |
+| `Duplicate()`          | 正确复制自定义字段 | 客户端没有真实值，调试困难                    |
+| `NetSerialize()`       | 网络同步你扩展字段 | 客户端 `bIsCriticalHit` 永远是 `false` |
+| `TStructOpsTypeTraits` | 激活以上自定义功能 | UE 忽略你的重写函数                      |
+
+# 105.`FColor` 、 `FLinearColor` 、 `FSlateColor`
+
+## ✅ 一句话总结：
+
+> **`FColor` / `FLinearColor` 是底层颜色类型，用于渲染；而 `FSlateColor` 是 Slate UI 框架封装的颜色结构，用于 UMG 和 UI 系统，支持样式继承与动态绑定。**
+
+---
+
+## 🧱 一、`FColor` 和 `FLinearColor`
+
+| 类型             | 用途                 | 范围      | 颜色空间 | 备注             |
+| -------------- | ------------------ | ------- | ---- | -------------- |
+| `FColor`       | 低精度颜色，`uint8 RGBA` | 0–255   | sRGB | 高效，占内存小        |
+| `FLinearColor` | 高精度颜色，`float RGBA` | 0.0–1.0 | 线性空间 | 用于 HDR、渲染计算更精准 |
+
+### 示例：
+
+```cpp
+FColor Color = FColor::Red;  // uint8(255,0,0,255)
+FLinearColor Linear = FLinearColor(1.f, 0.f, 0.f, 1.f);  // float(1.0,0,0,1)
+```
+
+通常在 **材质、光照、粒子系统、PostProcess** 等底层渲染系统中使用这两个。
+
+---
+
+## 🎨 二、`FSlateColor`
+
+| 类型            | 用途                | 包装对象              | 支持动态绑定                 | 场景                 |
+| ------------- | ----------------- | ----------------- | ---------------------- | ------------------ |
+| `FSlateColor` | Slate/UMG UI 系统专用 | 包裹 `FLinearColor` | ✅ 支持样式表（StyleSet）或动态绑定 | UMG Widget、文本、按钮颜色 |
+
+`FSlateColor` 是对颜色的高级封装，用于：
+
+* 支持样式继承（来自 `FSlateStyleSet`）
+* 支持 UI 动态变色（比如：悬停、禁用、运行时更换颜色）
+
+### 示例：
+
+```cpp
+// 静态颜色（常见写法）
+FSlateColor StaticSlateColor = FSlateColor(FLinearColor::Green);
+
+// 从样式中获取动态颜色
+FSlateColor DynamicSlateColor = FSlateColor::UseStyle();  // 从样式表继承
+```
+
+### 在 UMG 蓝图或 C++ 中常见：
+
+```cpp
+MyTextBlock->SetColorAndOpacity(FSlateColor(FLinearColor::Red));
+```
+
+---
+
+## 📌 五、使用场景建议
+
+| 场景                     | 推荐使用                      |
+| ---------------------- | ------------------------- |
+| 材质、粒子、渲染               | `FLinearColor` / `FColor` |
+| 蓝图 UI / UMG / Slate 控件 | `FSlateColor`             |
+| 配置静态颜色常量               | `FColor`（节省空间）            |
+| 颜色渐变、HDR               | `FLinearColor`            |
+| 支持样式继承的 UI 控件          | `FSlateColor`             |
+
+---
+
+## ✅ 总结
+
+| 类型             | 本质                       | 用途           | 是否支持样式 | 常用于        |
+| -------------- | ------------------------ | ------------ | ------ | ---------- |
+| `FColor`       | `uint8` RGBA             | 渲染           | ❌      | 底层纹理、颜色通道  |
+| `FLinearColor` | `float` RGBA             | 渲染 + 光照      | ❌      | 材质、光照、粒子系统 |
+| `FSlateColor`  | 封装 `FLinearColor` + 样式引用 | UMG/Slate UI | ✅      | 文本、按钮颜色设置  |
+
+# 106.Enemy AI
+![](https://tuchuanglpa.oss-cn-beijing.aliyuncs.com/tuchuanglpa/20250719210606832.png)
+## 🔄 架构说明（按图解结构）
+
+### ✅ 1. **Enemy（敌人）角色**
+
+* 是一个 **Pawn 或 Character**。
+* 不直接控制行为，而是交给 AI Controller。
+
+---
+
+### ✅ 2. **AI Controller**
+
+* 用于“控制”敌人 Pawn 的类，继承自 `AAIController`。
+* 在敌人生成后自动 Possess（附身）它。
+* 调用 `RunBehaviorTree(BehaviorTree)` 启动敌人的 AI 行为逻辑。
+
+---
+
+### ✅ 3. **RunBehaviorTree(BehaviorTree)**
+
+* 这是 `AIController` 中的函数，用来加载并运行指定的 Behavior Tree。
+* 通常在 `BeginPlay()` 或 `OnPossess()` 中调用。
+
+---
+
+### ✅ 4. **Behavior Tree Component**
+
+* 是实际驱动行为树逻辑的组件，管理树的 Tick 和状态。
+* 一般由 `AIController` 所拥有。
+* 执行行为树节点（选择器、任务、装饰器、服务等）。
+
+---
+
+### ✅ 5. **Blackboard Component**
+
+* 是行为树用来“存储信息”的数据库，比如敌人位置、攻击目标、是否看到玩家等。
+* 行为树节点之间通过 Blackboard 共享数据。
+* 类似“AI 的记忆”。
+
+---
+
+### ✅ 6. **Behavior Tree（行为树）资源本体）**
+
+* 是 `.uasset` 文件，在编辑器中编辑逻辑结构。
+* 包含选择器、任务（BTTask）、服务（BTService）、条件装饰器（Decorator）等节点。
+
+---
+
+## 🧭 流程示意（执行顺序）
+
+1. 敌人生成，自动附带 AIController。
+2. AIController 调用 `RunBehaviorTree()` 加载行为树。
+3. 行为树组件开始 Tick，读取 Blackboard 中的信息执行逻辑。
+4. 各种节点执行，比如：寻找玩家、移动到目标、攻击。
+5. Blackboard 中的数据不断更新，行为逻辑也随之切换。
+
+---
+
+## 🔧 实例：AI 敌人攻击玩家行为
+
+* `Blackboard` 存储 `PlayerActor`、`CanSeePlayer` 等变量。
+* 行为树逻辑如下：
+
+  * 如果 `CanSeePlayer == true`：
+
+    * → `MoveTo(PlayerActor)`。
+    * → 如果靠近了 → 执行攻击任务。
+  * 否则 → 执行巡逻任务。
+
+# DEBUG 6：超多多人bug：见08职业与伤害系统36和NaN56
+
+# 107.Use Controller Desired Rotation
+`Use Controller Desired Rotation` 是 Unreal Engine 中角色 (`Character`) 或其他基于 `Pawn` 的蓝图/类的一个重要布尔属性，它决定了：
+
+> ✅ **角色是否根据控制器（Controller）设定的方向自动旋转自身朝向（Yaw）**
+
+---
+
+## 🎯 用途解释（简洁）
+
+* ✔ 勾选：角色会自动面向 `Controller->GetControlRotation()` 的方向。
+* ❌ 不勾选：角色的朝向由运动或动画系统控制（如朝向移动方向或动画根骨骼）。
+
+---
+
+## 🎮 与 Rotation 相关的其他属性
+
+| 属性                                 | 功能                              |
+| ---------------------------------- | ------------------------------- |
+| `bOrientRotationToMovement`        | 是否朝向移动方向（适合 AI 或 TopDown）       |
+| `Use Controller Desired Rotation`  | 是否朝向 Controller 指定的旋转方向（适合玩家控制） |
+| `RotationRate`                     | 控制旋转速度（Yaw轴为主）                  |
+| `Controller->SetControlRotation()` | 设置控制器目标朝向                       |
+
+---
+
+## 📌 常见应用场景
+
+| 场景                          | 是否启用 `Use Controller Desired Rotation` | 说明                             |
+| --------------------------- | -------------------------------------- | ------------------------------ |
+| **AI敌人自动朝向目标**              | ✅ 是                                    | AI Controller 控制旋转，角色会始终朝向指定目标 |
+| **第一人称/第三人称玩家控制角色**         | ✅ 是                                    | 玩家控制器旋转，角色跟随视角朝向               |
+| **使用根运动（Root Motion）的动画角色** | ❌ 否                                    | 动画驱动朝向，不能使用控制器旋转               |
+| **TopDown俯视视角移动角色**         | ❌ 否                                    | 角色根据移动方向旋转，控制器不影响朝向            |
+
+---
+
+## 🧠 小结
+
+| 开关状态 | 行为                                                         |
+| ---- | ---------------------------------------------------------- |
+| ✅ 打开 | Pawn 会主动旋转，朝向 Controller 的方向（适合玩家和 AI）                     |
+| ❌ 关闭 | 旋转交给移动方向或动画控制（如 `bOrientRotationToMovement` 或 Root Motion） |
+
+# 108.GetMovementComponent() & GetCharacterMovement()
+
+
+## 🧩 简洁对比
+
+| 函数                       | 返回类型                           | 用途                                   | 特点                 |
+| ------------------------ | ------------------------------ | ------------------------------------ | ------------------ |
+| `GetMovementComponent()` | `UMovementComponent*`          | 通用函数，返回当前 Pawn 的移动组件                 | ✅ 所有 `Pawn` 都有     |
+| `GetCharacterMovement()` | `UCharacterMovementComponent*` | 专用于 `ACharacter` 的函数，返回它的 **角色移动组件** | ✅ 只有 `Character` 有 |
+
+---
+
+## 🎯 1. `GetMovementComponent()` —— 通用的
+
+* 来自 `APawn`，返回其拥有的 `UMovementComponent` 指针。
+* 各种子类的 `Pawn`（飞行器、车辆、自定义Pawn等）都有可能实现不同的 `MovementComponent`。
+* 返回类型是 **基类 `UMovementComponent*`**，不能访问子类特有属性，除非手动 `Cast<>()`。
+
+### ✅ 示例：
+
+```cpp
+UPawnMovementComponent* MoveComp = GetMovementComponent(); // 泛型
+```
+
+---
+
+## 🎯 2. `GetCharacterMovement()` —— ACharacter 专用
+
+* 来自 `ACharacter`，返回的是 **`UCharacterMovementComponent*`**，这是专门为人形角色设计的组件。
+* 可以直接访问很多角色专用设置，比如：
+
+  * `bOrientRotationToMovement`
+  * `JumpZVelocity`
+  * `MaxWalkSpeed`
+  * `bUseControllerDesiredRotation` 等
+
+### ✅ 示例：
+
+```cpp
+GetCharacterMovement()->MaxWalkSpeed = 600.f;
+```
+
+---
+
+## 🧪 举例说明：
+
+假设你在控制一个 AI 敌人（继承自 `ACharacter`）：
+
+### ❌ 使用 `GetMovementComponent()`：
+
+```cpp
+auto MoveComp = GetMovementComponent(); // 返回 UMovementComponent*
+MoveComp->SomeFunction(); // 只能访问通用函数
+```
+
+你无法直接访问 `MaxWalkSpeed` 或 `JumpZVelocity`，需要强转：
+
+```cpp
+Cast<UCharacterMovementComponent>(MoveComp)->MaxWalkSpeed = 600.f;
+```
+
+---
+
+### ✅ 使用 `GetCharacterMovement()`：
+
+```cpp
+GetCharacterMovement()->MaxWalkSpeed = 600.f; // ✔ 简洁安全
+```
+
+---
+
+## 🧠 小结：
+
+| 用法                       | 推荐场景                                   |
+| ------------------------ | -------------------------------------- |
+| `GetMovementComponent()` | 用于编写 **兼容所有 Pawn 类型** 的通用代码            |
+| `GetCharacterMovement()` | 用于 **只处理 ACharacter 及其子类** 时的直接访问，功能丰富 |
+
+# 109.接口（Interface）和继承父类（Base Class）
+
+
+## ✅ 一句话总结
+
+| 特性        | 接口（Interface）                  | 父类（Base Class）    |
+| --------- | ------------------------------ | ----------------- |
+| 本质        | 一组抽象方法签名                       | 一个实际的类，可能有属性、方法实现 |
+| 是否支持多继承   | ✅ 支持多个接口                       | ❌ 只能有一个父类         |
+| 是否可以有成员变量 | ❌ 不可以                          | ✅ 可以定义属性和变量       |
+| 是否能写默认实现  | UE 的接口 ❌（蓝图）<br> C++ ✅（默认实现可写） | ✅ 可以有完整实现         |
+| 多个类之间共享行为 | ✅（不同类统一行为接口）                   | ✅（继承公共父类）         |
+| 对象间解耦     | ✅ 高度解耦                         | ❌ 更强耦合            |
+
+---
+
+## ✅ 接口的优势场景
+
+* **多个类共享某种能力，但彼此没继承关系**
+
+  * 比如所有“可以被攻击”的对象，都实现 `IDamageableInterface`
+* **需要解耦调用方和被调用者**
+
+  * 比如 Motion Warping 系统不需要知道对象是什么，只要能 `GetCombatTarget()`
+* **蓝图扩展友好，支持 BlueprintNativeEvent/Callable**
+
+---
+
+## ✅ 父类的优势场景
+
+* **你确实有一整套共通逻辑**（如 EnemyBase 拥有血条、AIController、能力组件等）
+* **你能确保继承体系单一**，比如所有敌人都能用 `AEnemyBase::Die()` 等方法
+* **你希望所有子类都默认继承父类变量和行为**
+
+---
+
+## ✅ Unreal 编程推荐策略
+
+| 场景                  | 推荐方式                             |
+| ------------------- | -------------------------------- |
+| 所有敌人共享 AI、属性、组件     | ✅ 继承父类                           |
+| 所有可交互对象（门、箱子、NPC）   | ✅ 实现接口（`IInteractable`）          |
+| 所有可被攻击目标（敌人、目标靶、建筑） | ✅ 实现 `IDamageableInterface`      |
+| 需要蓝图调用、蓝图继承         | ✅ 用 `BlueprintNativeEvent` 接口更灵活 |
 
 
 
@@ -6363,7 +7154,7 @@ ExecutionParams.AttemptCalculateCapturedAttributeMagnitude(
 
 
 
-# todo：ue中的智能指针
+
 
 
 

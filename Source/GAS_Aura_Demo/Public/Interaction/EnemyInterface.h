@@ -24,4 +24,10 @@ class GAS_AURA_DEMO_API IEnemyInterface
 public:
 	virtual void Highlight() =0;
 	virtual void UnHighlight() =0;
+
+	UFUNCTION(BlueprintCallable, BlueprintNativeEvent)
+	void SetCombatTarget(AActor* InCombatTarget);
+
+	UFUNCTION(BlueprintCallable, BlueprintNativeEvent)
+	AActor* GetCombatTarget() const;
 };

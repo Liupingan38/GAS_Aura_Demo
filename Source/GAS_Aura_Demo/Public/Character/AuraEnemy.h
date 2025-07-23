@@ -11,6 +11,8 @@
 
 struct FCharacterClassDefaultInfo;
 class UWidgetComponent;
+class UBehaviorTree;
+class AAuraAIController;
 /**
  * 
  */
@@ -21,14 +23,17 @@ class GAS_AURA_DEMO_API AAuraEnemy : public AAuraCharacterBase, public IEnemyInt
 
 public:
 	AAuraEnemy();
-
+	virtual void PossessedBy(AController* NewController) override;
+	
 	//~ Begin Enemy Interface
 	virtual void Highlight() override;
 	virtual void UnHighlight() override;
+	virtual void SetCombatTarget_Implementation(AActor* InCombatTarget) override;
+	virtual AActor* GetCombatTarget_Implementation() const override;
 	//~ End Enemy Interface
 
 	//~ Begin Combat Interface
-	virtual int32 GetPlayLevel() override;
+	virtual int32 GetPlayerLevel() override;
 	virtual void Die() override;
 	//~ Begin Combat Interface
 
@@ -48,6 +53,10 @@ public:
 
 	UPROPERTY(EditAnywhere,BlueprintReadOnly, Category="Combat")
 	float LifeSpan = 5.f;
+
+	
+	UPROPERTY(BlueprintReadWrite, Category="Combat")
+	TObjectPtr<AActor> CombatTarget;
 	
 protected:
 	virtual void BeginPlay() override;
@@ -62,4 +71,10 @@ protected:
 
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly)
 	TObjectPtr<UWidgetComponent> HealthBar;
+
+	UPROPERTY()
+	TObjectPtr<AAuraAIController> AuraAIController;
+	
+	UPROPERTY(EditAnywhere, Category="AI")
+	TObjectPtr<UBehaviorTree> BehaviorTree;
 };
