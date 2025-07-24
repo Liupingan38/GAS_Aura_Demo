@@ -14,7 +14,8 @@ class GAS_AURA_DEMO_API UAuraDamageGameplayAbility : public UAuraGameplayAbility
 {
 	GENERATED_BODY()
 public:
-
+	UFUNCTION(BlueprintCallable, Category = "Damage")
+	void CauseDamage(AActor* Target);
 
 
 protected:

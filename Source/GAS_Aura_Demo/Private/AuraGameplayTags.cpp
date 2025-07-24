@@ -89,4 +89,12 @@ void FAuraGameplayTags::InitializeNativeGameplayTags()
 	//~ 角色能力
 	GameplayTags.Abilities_Attack = UGameplayTagsManager::Get().AddNativeGameplayTag(
 		FName("Abilities.Attack"), FString(TEXT("近战敌人的近战攻击")));
+
+	//~ 蒙太奇动画 
+	GameplayTags.Montage_Attack_Weapon = UGameplayTagsManager::Get().AddNativeGameplayTag(
+		FName("Montage.Attack.Weapon"), FString(TEXT("武器攻击蒙太奇动画")));
+	GameplayTags.Montage_Attack_LeftHand = UGameplayTagsManager::Get().AddNativeGameplayTag(
+		FName("Montage.Attack.LeftHand"), FString(TEXT("左手攻击蒙太奇动画")));
+	GameplayTags.Montage_Attack_RightHand = UGameplayTagsManager::Get().AddNativeGameplayTag(
+		FName("Montage.Attack.RightHand"), FString(TEXT("右手攻击蒙太奇动画")));
 }

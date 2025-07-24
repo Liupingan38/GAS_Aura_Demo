@@ -20,6 +20,7 @@ AAuraCharacter::AAuraCharacter()
 	bUseControllerRotationPitch=false;
 	bUseControllerRotationYaw=false;
 	bUseControllerRotationRoll=false;
+
 }
 
 void AAuraCharacter::PossessedBy(AController* NewController)

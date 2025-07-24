@@ -23,4 +23,5 @@ public:
 	//~ Begin Combat Interface
 private:
 	virtual void InitAbilityActorInfo() override;
+	
 };

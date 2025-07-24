@@ -3,6 +3,7 @@
 
 #include "Character/AuraCharacterBase.h"
 
+#include "AuraGameplayTags.h"
 #include "AbilitySystem/AuraAbilitySystemComponent.h"
 #include "Components/CapsuleComponent.h"
 #include "GAS_Aura_Demo/GAS_Aura_Demo.h"
@@ -25,6 +26,7 @@ AAuraCharacterBase::AAuraCharacterBase()
 	Weapon = CreateDefaultSubobject<USkeletalMeshComponent>("Weapon");
 	Weapon->SetupAttachment(GetMesh(), FName("WeaponHandSocket"));
 	Weapon->SetCollisionEnabled(ECollisionEnabled::Type::NoCollision);
+	Weapon->SetCollisionResponseToChannel(ECC_Camera, ECR_Ignore);
 }
 
 UAbilitySystemComponent* AAuraCharacterBase::GetAbilitySystemComponent() const
@@ -41,9 +43,10 @@ UAnimMontage* AAuraCharacterBase::GetHitReactMontage_Implementation()
 //仅服务器上调用
 void AAuraCharacterBase::Die()
 {
-	Weapon->DetachFromComponent(FDetachmentTransformRules(EDetachmentRule::KeepWorld,true));
+	Weapon->DetachFromComponent(FDetachmentTransformRules(EDetachmentRule::KeepWorld, true));
 	MulticastHandleDeath();
 }
+
 //服务器和客户端都调用
 void AAuraCharacterBase::MulticastHandleDeath_Implementation()
 {
@@ -58,6 +61,7 @@ void AAuraCharacterBase::MulticastHandleDeath_Implementation()
 
 	GetCapsuleComponent()->SetCollisionEnabled(ECollisionEnabled::Type::NoCollision);
 	Dissolve();
+	bDead = true;
 }
 
 void AAuraCharacterBase::BeginPlay()
@@ -65,10 +69,37 @@ void AAuraCharacterBase::BeginPlay()
 	Super::BeginPlay();
 }
 
-FVector AAuraCharacterBase::GetCombatSocketLocation_Implementation()
+FVector AAuraCharacterBase::GetCombatSocketLocation_Implementation(const FGameplayTag& MontageTag)
 {
-	check(Weapon);
-	return Weapon->GetSocketLocation(WeaponTipSocketName);
+	const FAuraGameplayTags& GameplayTags = FAuraGameplayTags::Get();
+	if (MontageTag == GameplayTags.Montage_Attack_Weapon && IsValid(Weapon))
+	{
+		return Weapon->GetSocketLocation(WeaponTipSocketName);
+	}
+	if (MontageTag == GameplayTags.Montage_Attack_LeftHand )
+	{
+		return GetMesh()->GetSocketLocation(LeftHandSocketName);
+	}
+	if (MontageTag == GameplayTags.Montage_Attack_RightHand)
+	{
+		return GetMesh()->GetSocketLocation(RightHandSocketName);
+	}
+	return FVector();
+}
+
+bool AAuraCharacterBase::IsDie_Implementation() const
+{
+	return bDead;
+}
+
+AActor* AAuraCharacterBase::GetAvatar_Implementation()
+{
+	return this;
+}
+
+TArray<FTaggedMontage> AAuraCharacterBase::GetAttackMontages_Implementation()
+{
+	return AttackMontages;
 }
 
 
@@ -105,13 +136,13 @@ void AAuraCharacterBase::Dissolve()
 {
 	if (IsValid(DissolveMaterialInstance))
 	{
-		UMaterialInstanceDynamic* DynamicMatInst=UMaterialInstanceDynamic::Create(DissolveMaterialInstance,this);
+		UMaterialInstanceDynamic* DynamicMatInst = UMaterialInstanceDynamic::Create(DissolveMaterialInstance, this);
 		GetMesh()->SetMaterial(0, DynamicMatInst);
 		StartDissolveTimeline(DynamicMatInst);
 	}
 	if (IsValid(WeaponDissolveMaterialInstance))
 	{
-		UMaterialInstanceDynamic* DynamicMatInst=UMaterialInstanceDynamic::Create(WeaponDissolveMaterialInstance,this);
+		UMaterialInstanceDynamic* DynamicMatInst = UMaterialInstanceDynamic::Create(WeaponDissolveMaterialInstance, this);
 		Weapon->SetMaterial(0, DynamicMatInst);
 		StartWeaponDissolveTimeline(DynamicMatInst);
 	}

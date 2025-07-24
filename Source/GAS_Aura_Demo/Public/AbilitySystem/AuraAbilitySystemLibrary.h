@@ -52,4 +52,13 @@ public:
 	static void SetIsCriticalHit(UPARAM(ref)
 	                             FGameplayEffectContextHandle& EffectContextHandle,
 	                             const bool bInIsCriticalHit);
+
+	UFUNCTION(BlueprintCallable, Category="AuraAbilitySystemLibrary|GameplayMechanics")
+	static void GetLivePlayerWithinRadius(const UObject* WorldContextObject, TArray<AActor*>& OutOverlappingActors, const TArray<AActor*>& ActorsToIgnore,
+	                                      float Radius, const FVector& SphereOrigin);
+
+	UFUNCTION(Blueprintpure, Category="AuraAbilitySystemLibrary|GameplayMechanics")  
+	static bool IsNotFriend(AActor* FirstActor,AActor* SecondActor) ;
+
+	
 };

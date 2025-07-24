@@ -28,7 +28,7 @@ UAuraAttributeSet::UAuraAttributeSet()
 	TagsToAttributesMap.Add(AuraGameplayTags.Attributes_Secondary_BlockChance, GetBlockChanceAttribute);
 	TagsToAttributesMap.Add(AuraGameplayTags.Attributes_Secondary_CriticalHitChance, GetCriticalHitChanceAttribute);
 	TagsToAttributesMap.Add(AuraGameplayTags.Attributes_Secondary_CriticalHitDamage, GetCriticalHitDamageAttribute);
-	TagsToAttributesMap.Add(AuraGameplayTags.Attributes_Secondary_CriticalHitResistance,GetCriticalHitResistanceAttribute);
+	TagsToAttributesMap.Add(AuraGameplayTags.Attributes_Secondary_CriticalHitResistance, GetCriticalHitResistanceAttribute);
 	TagsToAttributesMap.Add(AuraGameplayTags.Attributes_Secondary_HealthRegeneration, GetHealthRegenerationAttribute);
 	TagsToAttributesMap.Add(AuraGameplayTags.Attributes_Secondary_ManaRegeneration, GetManaRegenerationAttribute);
 	TagsToAttributesMap.Add(AuraGameplayTags.Attributes_Secondary_MaxHealth, GetMaxHealthAttribute);
@@ -91,7 +91,7 @@ void UAuraAttributeSet::SetEffectProperties(const struct FGameplayEffectModCallb
 	Props.EffectContextHandle = Data.EffectSpec.GetContext();
 	Props.SourceASC = Props.EffectContextHandle.GetOriginalInstigatorAbilitySystemComponent();
 	if (IsValid(Props.SourceASC) && Props.SourceASC->AbilityActorInfo.IsValid() && Props.SourceASC->AbilityActorInfo.
-		Get()->AvatarActor.IsValid())
+	                                                                                     Get()->AvatarActor.IsValid())
 	{
 		Props.SourceAvatarActor = Props.SourceASC->AbilityActorInfo.Get()->AvatarActor.Get();
 		Props.SourceController = Props.SourceASC->AbilityActorInfo.Get()->PlayerController.Get();
@@ -156,8 +156,8 @@ void UAuraAttributeSet::PostGameplayEffectExecute(const struct FGameplayEffectMo
 				TagContainer.AddTag(FAuraGameplayTags::Get().Effects_HitReact);
 				Props.TargetASC->TryActivateAbilitiesByTag(TagContainer);
 			}
-			const bool bIsBlockedHit=UAuraAbilitySystemLibrary::IsBlockedHit(Props.EffectContextHandle);
-			const bool bIsCriticalHit=UAuraAbilitySystemLibrary::IsCriticalHit(Props.EffectContextHandle);
+			const bool bIsBlockedHit = UAuraAbilitySystemLibrary::IsBlockedHit(Props.EffectContextHandle);
+			const bool bIsCriticalHit = UAuraAbilitySystemLibrary::IsCriticalHit(Props.EffectContextHandle);
 			ShowFloatingText(Props, LocalIncomingDamage, bIsBlockedHit, bIsCriticalHit);
 		}
 	}
@@ -168,7 +168,14 @@ void UAuraAttributeSet::ShowFloatingText(const FEffectProperties& Props, float D
 {
 	if (Props.TargetCharacter != Props.SourceCharacter)
 	{
+		//若伤害来源是玩家【伤害数始终显示在PlayerController上】
 		if (AAuraPlayerController* PC = Cast<AAuraPlayerController>(Props.SourceCharacter->Controller))
+		{
+			PC->ShowDamageNumber(Damage, Props.TargetCharacter, bIsBlockedHit, bIsCriticalHit);
+			return;
+		}
+		//若伤害来源是敌人【伤害数始终显示在PlayerController上】
+		if (AAuraPlayerController* PC = Cast<AAuraPlayerController>(Props.TargetCharacter->Controller))
 		{
 			PC->ShowDamageNumber(Damage, Props.TargetCharacter, bIsBlockedHit, bIsCriticalHit);
 		}

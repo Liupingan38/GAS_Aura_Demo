@@ -132,10 +132,7 @@ void AAuraEnemy::HitReactTagChanged(const FGameplayTag CallbackTag, int32 NewCou
 	{
 		AuraAIController->GetBlackboardComponent()->SetValueAsBool(FName("HitReacting"), bHitReacting);
 	}
-	else
-	{
-		UE_LOG(LogTemp, Warning, TEXT("AuraAIController or Blackboard is null during HitReactTagChanged"));
-	}
+	
 }
 
 void AAuraEnemy::InitAbilityActorInfo()
