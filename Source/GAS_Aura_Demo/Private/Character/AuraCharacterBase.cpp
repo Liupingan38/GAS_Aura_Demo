@@ -71,20 +71,24 @@ void AAuraCharacterBase::BeginPlay()
 	Super::BeginPlay();
 }
 
-FVector AAuraCharacterBase::GetCombatSocketLocation_Implementation(const FGameplayTag& MontageTag)
+FVector AAuraCharacterBase::GetCombatSocketLocation_Implementation(const FGameplayTag& SocketTag)
 {
 	const FAuraGameplayTags& GameplayTags = FAuraGameplayTags::Get();
-	if (MontageTag == GameplayTags.CombatSocket_Weapon && IsValid(Weapon))
+	if (SocketTag == GameplayTags.CombatSocket_Weapon && IsValid(Weapon))
 	{
 		return Weapon->GetSocketLocation(WeaponTipSocketName);
 	}
-	if (MontageTag == GameplayTags.CombatSocket_LeftHand )
+	if (SocketTag == GameplayTags.CombatSocket_LeftHand )
 	{
 		return GetMesh()->GetSocketLocation(LeftHandSocketName);
 	}
-	if (MontageTag == GameplayTags.CombatSocket_RightHand)
+	if (SocketTag == GameplayTags.CombatSocket_RightHand)
 	{
 		return GetMesh()->GetSocketLocation(RightHandSocketName);
+	}
+	if (SocketTag == GameplayTags.CombatSocket_Tail)
+	{
+		return GetMesh()->GetSocketLocation(TailSocketName);
 	}
 	return FVector();
 }
