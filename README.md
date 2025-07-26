@@ -6660,6 +6660,8 @@ EGameplayAbilityInstancingPolicy InstancingPolicy;
 * 每个角色激活这个技能前，会从 CDO 复制出一个实例，存入 `AbilityInstanceNotReplicated`
 * 生命周期随角色存在
 * 可以在类里保存变量（如冷却时间、次数等）
+* ⚠ 注意事项：
+如果你使用了 InstancedPerActor，要特别小心不要让成员变量残留状态污染下一次释放（比如需要手动重置）。
 
 #### 🔍 适合：
 
@@ -7118,6 +7120,308 @@ GetCharacterMovement()->MaxWalkSpeed = 600.f; // ✔ 简洁安全
 | 所有可交互对象（门、箱子、NPC）   | ✅ 实现接口（`IInteractable`）          |
 | 所有可被攻击目标（敌人、目标靶、建筑） | ✅ 实现 `IDamageableInterface`      |
 | 需要蓝图调用、蓝图继承         | ✅ 用 `BlueprintNativeEvent` 接口更灵活 |
+
+# Debug8：AIController为nullptr
+## ✅ 结语
+
+> 在 Unreal 引擎中，**Controller 是 Pawn 的“控制器”而非构造时即存在的强依赖**，要始终把它当成 *运行时动态资源* 来处理，访问它的任何地方都应该做 `nullptr` 防御。
+
+---
+
+## ✅ 为什么 `AIController` 有时候是 `nullptr`？
+
+### 1. **Pawn（例如敌人）未被 `AIController` 控制**
+
+这是最常见的情况，发生原因包括：
+
+| 触发原因                                                | 描述                                                        |
+| --------------------------------------------------- | --------------------------------------------------------- |
+| **未设置 `AutoPossessAI`**                             | 蓝图或 C++ 中没有设置 `AutoPossessAI = PlacedInWorldOrSpawned`    |
+| **未设置 `AIControllerClass`**                         | 引擎找不到该用哪个控制器来 Possess                                     |
+| **敌人是临时 Spawn 出来的，但没调用 `SpawnDefaultController()`** | 比如用 `SpawnActor()` 创建后忘了调用控制器生成逻辑                         |
+| **正在被销毁中**                                          | 死亡过程中可能已经 `UnPossess()`，`Controller == nullptr`           |
+| **World Context 是 Editor / PIE 编辑器**                | 比如 `AnimationEditorPreviewActor` 不是运行时对象，永远没有 Controller  |
+| **延迟调用时机**                                          | 比如 `BeginPlay()` 中尝试访问 `Controller`，但还没初始化完毕（Possess 在后面） |
+
+---
+
+## ✅ 什么时候最容易出现 `nullptr`？
+
+### 以下这些生命周期阶段最容易出现问题：
+
+| 位置                              | 是否建议使用 Controller                       |
+| ------------------------------- | --------------------------------------- |
+| 构造函数 `Constructor`              | ❌ **禁止**使用 Controller（Actor 还没 Spawn 完） |
+| `BeginPlay()`                   | ⚠️ **小心使用**，建议加 `IsValid()` 检查          |
+| `PossessedBy()`                 | ✅ **Controller 已赋值，可放心使用**              |
+| Tick() / GameplayTag / Event 回调 | ⚠️ **需谨慎**，敌人可能死亡或未被 Possess            |
+| 死亡销毁过程中                         | ❌ 不可使用，Controller 可能已销毁或解除绑定            |
+| 编辑器预览中（Editor 模式）               | ❌ 不可使用（Controller 不存在）                  |
+
+---
+
+## ✅ 建议的防御式编程原则（针对 AIController）
+
+以下几点建议可以帮助你避免绝大多数 AI 崩溃或空指针访问：
+
+---
+
+### ✅ 1. **所有访问 Controller 的地方加 null 检查**
+
+```cpp
+if (Controller && Controller->GetPawn()) { ... }
+if (AuraAIController && AuraAIController->GetBlackboardComponent()) { ... }
+```
+
+---
+
+### ✅ 2. **通过 `GetController()` 获取并赋值**
+
+```cpp
+// BeginPlay 中
+if (HasAuthority() && !AuraAIController)
+{
+	AuraAIController = Cast<AAuraAIController>(GetController());
+}
+```
+
+---
+
+### ✅ 3. **受击、死亡等事件中使用前做判断**
+
+比如受击后触发 `HitReactTagChanged`，敌人可能正处于销毁过程，Controller 已经失效：
+
+```cpp
+if (!IsPendingKill() && AuraAIController)
+```
+
+---
+
+### ✅ 4. **在注册 `GameplayTag`、`Delegate`、`Timer` 时注意生命周期**
+
+建议在 `PossessedBy()` 或 Actor 初始化完成后注册监听器，不要过早（如构造函数或 BeginPlay 直接注册）。
+
+---
+
+### ✅ 5. **考虑 `WorldType` 检查，避免编辑器预览崩溃**
+
+```cpp
+if (GetWorld()->WorldType != EWorldType::Game) return;  // 忽略编辑器运行
+```
+
+---
+
+## ✅ 总结：何时写防御式代码？
+
+| 使用场景                       | 是否推荐使用防御式写法？ | 原因                     |
+| -------------------------- | ------------ | ---------------------- |
+| 构造函数                       | ✅ 必须         | Controller 不存在         |
+| BeginPlay                  | ✅ 推荐         | 可能未 Possess            |
+| PossessedBy                | ❌ 可放心使用      | 保证 Controller 存在       |
+| GameplayEffect 回调 / Tag 监听 | ✅ 强烈推荐       | 角色可能已死亡，Controller 已销毁 |
+| AI 行为树节点执行时                | ✅ 推荐         | 有可能断线、切换控制器等问题         |
+| 编辑器模式（非运行时）                | ✅ 推荐         | Controller 永远是 null    |
+
+# 110.Ability 等级 & GE 等级
+非常准确！你理解得已经很接近专业了。我们再进一步细化一下，确保你完全吃透 **Ability 等级** 和 **GameplayEffect（GE）等级** 的分工和作用：
+
+---
+
+## ✅ 核心结论：
+
+| 等级类型                                                   | 用于控制什么                                  | 是否影响伤害量                         | 是否影响 GE 内属性（如持续时间、加成值） |
+| ------------------------------------------------------ | --------------------------------------- | ------------------------------- | ---------------------- |
+| **Ability 等级** `GetAbilityLevel()`                     | 控制技能逻辑中的数据，比如 `SetByCaller` 值、发射数量、范围等  | ✅ 是，通过 SetByCaller 设置伤害量等       | ❌ 否，不直接影响 GE 内部        |
+| **GE 等级** `MakeOutgoingGameplayEffectSpec(..., Level)` | 控制 GE 内的所有 `ScalableFloat` 和 `Duration` | ✅ 有可能影响（如果 GE 内部用了 GELevel 来缩放） | ✅ 是，直接影响 GE 的所有曲线计算和倍率 |
+
+---
+
+## 🔍 举个例子：一个火球技能
+
+你有一个火球技能（GameplayAbility），它会：
+
+1. 对目标施加一个 `DamageEffect`。
+2. 火球技能有“技能等级”可以升级，越高越痛。
+3. `DamageEffect` 用 `SetByCaller` 填充伤害值，但其**Dot 持续时间**由 `GE 等级控制`。
+
+---
+
+### ✅ 技能等级（Ability Level）
+
+你可以在 Ability 中根据技能等级来设置伤害量：
+
+```cpp
+float DamageAmount = FireballDamageCurve->GetFloatValue(GetAbilityLevel());
+UAbilitySystemBlueprintLibrary::AssignTagSetByCallerMagnitude(SpecHandle, TAG_Damage_Fire, DamageAmount);
+```
+
+* 💡 **能力等级影响外部传给 GE 的值**（如 `SetByCaller.Damage.Fire = 100`）
+
+---
+
+### ✅ GE 等级（GameplayEffect Level）
+
+你也可以让 `DamageEffect` 中的属性（如 Dot 持续时间）随着 GE 的等级而变化：
+
+```cpp
+FGameplayEffectSpecHandle SpecHandle = MakeOutgoingGameplayEffectSpec(DamageEffectClass, GELevel); // GELevel 决定 Dot 时间
+```
+
+并在 `DamageEffect` 中设置：
+
+```plaintext
+Duration = ScalableFloat(2.0f) + Curve(GELevel)
+```
+
+* 💡 **GE等级影响内部计算**，如：
+
+  * 持续时间
+  * 每秒伤害
+  * 护甲加成
+  * 暴击率
+  * 状态命中率
+
+
+---
+
+## ✅ 最佳实践建议：
+
+| 场景                    | 推荐使用哪种等级                                                  |
+| --------------------- | --------------------------------------------------------- |
+| 你想让技能越高等级伤害越高         | 用 `GetAbilityLevel()` 来控制 `SetByCaller.Damage.X`          |
+| 你想让中毒、灼烧、减速持续时间随等级增长  | 提高 **GE 等级**                                              |
+| 你想用一套 GE 表达不同技能的强度    | 动态传入 **GELevel = GetAbilityLevel()** 到 `MakeOutgoingSpec` |
+| 你不需要 GE 自带的任何缩放，仅用作容器 | GELevel 可以固定为 1.f                                         |
+
+# 111.BlueprintNativeEvent
+
+
+## ✅ 简洁定义：什么是 `BlueprintNativeEvent`？
+
+`BlueprintNativeEvent` 是一种 **“可以在 C++ 中实现，也可以被蓝图重写”的虚函数机制**。
+
+---
+
+
+## ✅ 你说的“上位替代”是对的 —— 相对于传统虚函数，它具备额外能力：
+
+| 特性              | 普通虚函数                | BlueprintNativeEvent              |
+| --------------- | -------------------- | --------------------------------- |
+| 是否可以在子类中 C++ 重写 | ✅ 是                  | ✅ 是（通过 `_Implementation()`）       |
+| 是否可以在蓝图中重写      | ❌ 否                  | ✅ 是                               |
+| 是否可以在蓝图中调用      | ❌ 否（必须用 Wrapper 自己写） | ✅ 是                               |
+| 是否必须实现          | ❌ 否（纯虚函数才必须）         | ❌ 否，蓝图也可实现                        |
+| 是否有默认实现         | ✅ 可以                 | ✅ `_Implementation()` 提供默认 C++ 行为 |
+
+---
+
+## ✅ 它比“虚函数 + BlueprintCallable”更高级的地方是：
+
+你不需要写双份代码，也不用自己写 wrapper 调用蓝图：
+
+```cpp
+// 只需这样定义即可：
+UFUNCTION(BlueprintCallable, BlueprintNativeEvent)
+void SetCombatTarget(AActor* Target);
+```
+
+* C++ 子类可以重写 `SetCombatTarget_Implementation()`
+* 蓝图子类也可以直接在蓝图里重写逻辑
+* 蓝图或 C++ 都可以通过调用 `SetCombatTarget()` 来触发蓝图或 C++ 实现
+
+---
+
+## ✅ 对比普通虚函数 vs BlueprintNativeEvent 的使用场景
+
+| 场景                   | 推荐用法                               |
+| -------------------- | ---------------------------------- |
+| 只需要在 C++ 中实现         | 用普通虚函数                             |
+| 只在蓝图中实现，不需要默认实现      | 用 `BlueprintImplementableEvent`    |
+| 需要 C++ 默认实现 + 蓝图可选重写 | ✅ 用 `BlueprintNativeEvent`（你现在的情况） |
+
+---
+
+## 🧠 接口中使用 `BlueprintNativeEvent` 的特别意义
+
+你现在写的是接口函数：
+
+```cpp
+UFUNCTION(BlueprintCallable, BlueprintNativeEvent)
+void SetCombatTarget(AActor* InCombatTarget);
+```
+
+这表示：
+
+* 实现了 `IEnemyInterface` 的任何类都可以选择：
+
+  * **C++ 实现 `_Implementation()`**
+  * **蓝图中 override 它的实现**
+* 外部调用 `SetCombatTarget()` 会自动根据蓝图或 C++ 版本调用
+
+这是非常强大的一种 **“Blueprint/C++ 双模调度机制”**。
+
+---
+
+
+## 🔚 最佳使用场景总结：
+
+| 如果你要做的是...         | 推荐用法                          |
+| ------------------ | ----------------------------- |
+| C++ 中定义函数行为，蓝图中不关心 | 普通虚函数即可                       |
+| 希望蓝图中可选地实现该函数      | ✅ 用 `BlueprintNativeEvent`    |
+| 希望蓝图必须实现，没有默认实现    | `BlueprintImplementableEvent` |
+| 希望蓝图调用这个函数         | `BlueprintCallable`（结合上面两种）   |
+
+# 112.接口 vs 继承
+
+## ✅【接口 vs 继承】使用场景对比表
+
+| 比较维度                   | **继承（类层级）**                     | **接口（功能解耦）**                            |
+| ---------------------- | ------------------------------- | --------------------------------------- |
+| **目的**                 | 表示“是什么”（is-a）                   | 表示“能做什么”（can-do）                        |
+| **继承关系**               | 只能单继承                           | ✅ 支持多接口同时实现                             |
+| **结构绑定**               | 强依赖类结构                          | ❌ 不关心类层级，弱依赖                            |
+| **适用于**                | 类之间具有共性、共享属性和逻辑                 | 类结构不同，但需要统一行为                           |
+| **可访问成员变量**            | ✅ 可继承成员变量                       | ❌ 接口不能包含变量                              |
+| **函数共享**               | ✅ 提供默认实现                        | ✅ 支持默认实现（BlueprintNativeEvent）或必须实现（纯虚） |
+| **蓝图支持**               | 需要额外设计才能蓝图重写                    | ✅ 天然支持蓝图可实现和调用                          |
+| **扩展性**                | 结构紧密，扩展受限                       | ✅ 松耦合、易于扩展新类                            |
+| **类型安全**               | ✅ 靠类识别类型                        | 接口只能靠 `Implements<UXXXInterface>()` 判断  |
+| **Gameplay/AI/动画系统访问** | ❌ 不适合                           | ✅ 可通过接口安全访问 Actor 能力                    |
+| **例子**                 | 所有玩家角色继承 `APlayerCharacterBase` | 所有可攻击角色实现 `IAttackInterface`            |
+| **UE推荐用途**             | 管理通用行为的基础类                      | 模块间通信、动画通知、Ability系统等                   |
+
+---
+
+## ✅ 举几个典型案例（UE 项目中常见）：
+
+| 场景                           | 推荐方案                            | 理由                    |
+| ---------------------------- | ------------------------------- | --------------------- |
+| 所有角色都需要有血量、属性、Ability系统等     | ✅ 用基类（如 `AAuraCharacterBase`）   | 属性与结构高度一致，继承方便管理      |
+| 所有能“被攻击”的对象（敌人、玩家、训练靶子）      | ✅ 用 `ICombatInterface`          | 不同类可能结构完全不同，但都应支持响应攻击 |
+| 动画通知（AnimNotify）想播放攻击Montage | ✅ 用接口如 `IAttackMontageProvider` | 动画只关心有没有这个行为，不关心类是什么  |
+| NPC系统中 AI、Boss、士兵都要使用同一套行为树  | ✅ 用接口 + 统一行为                    | 保持 Actor 类独立性但共享行为模块  |
+| 所有敌人都共享行为树、状态机、血条等功能         | ✅ 用继承自 `AAuraEnemyBase`         | 行为一致，继承最直接            |
+
+---
+
+## ✅ 判断准则口诀
+
+> 🧠 **“继承看结构，接口看能力”**
+>
+> * 如果对象“是一个”某种类型（如士兵是角色），用继承。
+> * 如果对象“能够做”某件事（如能被攻击），用接口。
+
+---
+
+## ✅ 额外建议
+
+| 建议                            | 说明                                                      |
+| ----------------------------- | ------------------------------------------------------- |
+| 避免“钻牛角尖”的过度接口化                | 有时候简单继承更直接，没必要“所有行为都接口”                                 |
+| 可以“继承 + 接口”混用                 | UE官方的 `ACharacter` 也实现了多个接口，如 `IAbilitySystemInterface` |
+| 接口中推荐用 `BlueprintNativeEvent` | 支持蓝图与 C++ 双重实现，更灵活                                      |
+
 
 
 

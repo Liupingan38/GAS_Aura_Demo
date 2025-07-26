@@ -18,3 +18,10 @@ void UAuraDamageGameplayAbility::CauseDamage(AActor* Target)
 	GetAbilitySystemComponentFromActorInfo()->ApplyGameplayEffectSpecToTarget(*SpecHandle.Data.Get(),
 	                                                                          UAbilitySystemBlueprintLibrary::GetAbilitySystemComponent(Target));
 }
+
+FTaggedMontage UAuraDamageGameplayAbility::GetRandomTaggedMontageFromArray(const TArray<FTaggedMontage>& TaggedMontageArray) const
+{
+	if (TaggedMontageArray.Num() == 0) return FTaggedMontage();
+	const int32 Selection=FMath::RandRange(0,TaggedMontageArray.Num()-1);
+	return TaggedMontageArray[Selection];
+}
