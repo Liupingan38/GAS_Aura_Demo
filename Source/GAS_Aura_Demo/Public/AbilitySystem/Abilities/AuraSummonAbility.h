@@ -18,19 +18,22 @@ public:
 
 	UFUNCTION(BlueprintCallable)
 	TArray<FVector> GetSpawnLocation();
+
+	UFUNCTION(BlueprintPure)
+	TSubclassOf<APawn> GetRandomMinionClass();
 	
 	UPROPERTY(EditDefaultsOnly, Category="Summoning")
 	int32 NumMinion = 5;
 
 	UPROPERTY(EditDefaultsOnly, Category="Summoning")
-	TArray<TSubclassOf<APawn>> MinionClasses;
+	TArray<TSubclassOf<APawn>> MinionClassArray;
 
 	UPROPERTY(EditDefaultsOnly, Category="Summoning")
-	float MinSpawnDistance = 50.f;
+	float MinSpawnDistance = 150.f;
 
 	UPROPERTY(EditDefaultsOnly, Category="Summoning")
-	float MaxSpawnDistance = 250.f;
+	float MaxSpawnDistance = 300.f;
 
-	UPROPERTY(EditDefaultsOnly, Category="Summoning")
-	float SpawnSpread = 90.f;
+	UPROPERTY(EditDefaultsOnly, Category="Summoning") 
+	float SpawnSpreadAngle = 90.f;
 };

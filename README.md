@@ -7422,6 +7422,52 @@ void SetCombatTarget(AActor* InCombatTarget);
 | 可以“继承 + 接口”混用                 | UE官方的 `ACharacter` 也实现了多个接口，如 `IAbilitySystemInterface` |
 | 接口中推荐用 `BlueprintNativeEvent` | 支持蓝图与 C++ 双重实现，更灵活                                      |
 
+# 113.`EditAnywhere` 和 `EditDefaultsOnly`
+
+### ✅ 总结对比表
+
+| 属性标签                  | 是否可编辑 | 编辑位置                   | 运行时是否可变 | 使用场景                 |
+| --------------------- | ----- | ---------------------- | ------- | -------------------- |
+| `EditAnywhere`        | ✅     | Blueprint + Details 面板 | ✅       | 开发和调试阶段频繁调整的变量       |
+| `EditDefaultsOnly`    | ✅     | **仅**蓝图类默认值 (Defaults) | ❌       | 只希望在蓝图中设定初值，不希望运行时修改 |
+| `VisibleAnywhere`     | ❌     | 可见但不可编辑                | ✅       | 调试时查看状态但不能手动改        |
+| `VisibleDefaultsOnly` | ❌     | 仅默认值可见                 | ❌       | 不希望用户改但可看到默认值        |
+
+---
+
+### 📌 具体解释
+
+#### 🔹 `EditAnywhere`
+
+* 可以在 **蓝图默认值面板**（Class Defaults）和 **实例 Details 面板**（放进关卡后）修改。
+* 适用于你希望在开发或关卡中**灵活调整变量**的情况。
+* 举例：
+
+  ```cpp
+  UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Stats")
+  float MovementSpeed;
+  ```
+
+#### 🔹 `EditDefaultsOnly`
+
+* 仅能在蓝图类的 **默认值面板** 中设置。
+* 一般用于需要统一默认值的变量，**不希望实例被编辑器或关卡设计师误改**。
+* 举例：
+
+  ```cpp
+  UPROPERTY(EditDefaultsOnly, Category = "Attack")
+  TSubclassOf<class AProjectile> FireballProjectileClass;
+  ```
+
+---
+
+### 🧠 使用建议
+
+| 如果你希望...           | 应该使用...            |
+| ------------------ | ------------------ |
+| 所有人都能自由调整（调试、设计师）  | `EditAnywhere`     |
+| 只允许设置默认值，不允许修改运行时值 | `EditDefaultsOnly` |
+| 只在代码中修改或作为调试输出     | `VisibleAnywhere`  |
 
 
 

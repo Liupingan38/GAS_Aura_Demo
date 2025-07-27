@@ -86,9 +86,11 @@ void FAuraGameplayTags::InitializeNativeGameplayTags()
 	GameplayTags.Effects_HitReact = UGameplayTagsManager::Get().AddNativeGameplayTag(
 		FName("Effects.HitReact"), FString(TEXT("受击反应时赋予标签")));
 
-	//~ 角色能力
+	//~ 技能类型
 	GameplayTags.Abilities_Attack = UGameplayTagsManager::Get().AddNativeGameplayTag(
-		FName("Abilities.Attack"), FString(TEXT("近战敌人的近战攻击")));
+		FName("Abilities.Attack"), FString(TEXT("攻击技能类型")));
+	GameplayTags.Abilities_Summon = UGameplayTagsManager::Get().AddNativeGameplayTag(
+		FName("Abilities.Summon"), FString(TEXT("召唤技能类型")));
 
 	//~ 战斗插槽 
 	GameplayTags.CombatSocket_Weapon = UGameplayTagsManager::Get().AddNativeGameplayTag(

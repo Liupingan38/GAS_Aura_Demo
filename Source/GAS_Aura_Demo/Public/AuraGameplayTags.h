@@ -50,7 +50,9 @@ public:
 	FGameplayTag Damage_Arcane;
 	FGameplayTag Damage_Physical;
 
+	//技能类型标签
 	FGameplayTag Abilities_Attack;
+	FGameplayTag Abilities_Summon;
 
 	//战斗插槽
 	FGameplayTag CombatSocket_Weapon;
