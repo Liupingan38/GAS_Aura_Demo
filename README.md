@@ -7121,7 +7121,7 @@ GetCharacterMovement()->MaxWalkSpeed = 600.f; // ✔ 简洁安全
 | 所有可被攻击目标（敌人、目标靶、建筑） | ✅ 实现 `IDamageableInterface`      |
 | 需要蓝图调用、蓝图继承         | ✅ 用 `BlueprintNativeEvent` 接口更灵活 |
 
-# Debug8：AIController为nullptr
+# Debug7：AIController为nullptr
 ## ✅ 结语
 
 > 在 Unreal 引擎中，**Controller 是 Pawn 的“控制器”而非构造时即存在的强依赖**，要始终把它当成 *运行时动态资源* 来处理，访问它的任何地方都应该做 `nullptr` 防御。
@@ -7582,11 +7582,185 @@ DMI 是在**运行时（Runtime）动态创建**的材质实例，允许你在�
 
 打开 **Stat RHI** 或 **ProfileGPU**，你可以看到当前场景的 Draw Calls 数量。
 
+# 117.委托的一个实例
+
+### ✅ 1. `DECLARE_MULTICAST_DELEGATE_OneParam(FAbilityGiven, UAuraAbilitySystemComponent*)`
+
+#### ✅ 含义：
+
+这行 **声明了一个多播委托（Multicast Delegate）类型**，名字叫 `FAbilityGiven`，它接受一个参数，类型是 `UAuraAbilitySystemComponent*`。
+
+#### ✅ 分解：
+
+* `DECLARE_MULTICAST_DELEGATE_OneParam(...)`：UE 宏，用于声明一个带一个参数的多播委托类型。
+* `FAbilityGiven`：**这是你自定义的委托类型名**（类似类型名/类名）。
+* `UAuraAbilitySystemComponent*`：传入委托的参数类型，指向你自定义的类 `UAuraAbilitySystemComponent` 的指针。
+
+---
+
+### ✅ 2. `FAbilityGiven AbilityGivenDelegate;`
+
+#### ✅ 含义：
+
+使用刚刚声明的委托类型 `FAbilityGiven` 定义了一个实例变量，名为 `AbilityGivenDelegate`。
+
+#### ✅ 分解：
+
+* `FAbilityGiven`：上面声明的委托类型。
+* `AbilityGivenDelegate`：你创建的委托实例，可以用来广播事件。
+
+---
+
+### ✅ 3. `AbilityGivenDelegate.Broadcast(this);`
+
+#### ✅ 含义：
+
+调用该委托，广播事件，传入参数 `this`（当前对象）。所有绑定到该委托的函数都会被调用。
+
+#### ✅ 分解：
+
+* `Broadcast(...)`：触发该委托，通知所有监听者（观察者）。
+* `this`：指的是当前对象，这里是一个 `UAuraAbilitySystemComponent*` 类型的对象，和声明中委托接受的参数一致。
+
+---
+
+### ✅ 4. `AuraASC->AbilityGivenDelegate.AddUObject(this, &UOverlayWidgetController::OnInitializeStartupAbilities);`
+
+#### ✅ 含义：
+
+为 `AuraASC`（一个 `UAuraAbilitySystemComponent*`）对象中的 `AbilityGivenDelegate` 绑定一个函数。当该委托广播时，将调用 `this` 的成员函数 `OnInitializeStartupAbilities`。
+
+#### ✅ 分解：
+
+* `AuraASC`：某个 `UAuraAbilitySystemComponent*` 的实例。
+* `AbilityGivenDelegate`：它的委托变量。
+* `AddUObject(...)`：用于将 `UObject` 成员函数绑定到委托上。
+* `this`：当前类实例，应该是 `UOverlayWidgetController*` 类型。
+* `&UOverlayWidgetController::OnInitializeStartupAbilities`：绑定的函数地址，函数签名必须是 `void Func(UAuraAbilitySystemComponent*)`。
+
+---
+
+## 🧾 总结：每个词的类型和来源
+
+| 词                                                         | 类型/宏                                 | 说明                                             |
+| --------------------------------------------------------- | ------------------------------------ | ---------------------------------------------- |
+| `DECLARE_MULTICAST_DELEGATE_OneParam`                     | UE4 宏                                | 声明一个带一个参数的多播委托类型                               |
+| `FAbilityGiven`                                           | 自定义委托类型                              | 名字自定，类似于类型别名                                   |
+| `AbilityGivenDelegate`                                    | 委托变量                                 | 委托类型变量，调用 Broadcast 可广播事件                      |
+| `Broadcast(this)`                                         | 委托方法                                 | 调用所有监听该委托的函数                                   |
+| `UAuraAbilitySystemComponent`                             | 自定义类                                 | 你定义的继承自 `UAbilitySystemComponent` 的类           |
+| `AuraASC`                                                 | 指向 `UAuraAbilitySystemComponent` 的指针 | 通常用于访问组件                                       |
+| `AddUObject(...)`                                         | 委托绑定函数                               | 把某个 UObject 的成员函数注册到委托                         |
+| `this`                                                    | 当前类实例指针                              | 用于指代当前 `UObject`（如 `UOverlayWidgetController`） |
+| `&UOverlayWidgetController::OnInitializeStartupAbilities` | 成员函数指针                               | 要绑定到委托的成员函数地址                                  |
 
 
+# 118.委托与事件
+事件（Event）和委托（Delegate）在 Unreal Engine 中关系密切，但不完全一样。可以简单理解为：
+
+> **委托（Delegate）是“通知机制”**，而**事件（Event）是“响应机制”**。
+
+---
+
+## ✅ 委托（Delegate）
+
+### 1. 定义
+
+委托是 Unreal 提供的一种“函数指针容器”，可动态绑定一个或多个函数，并在特定时刻统一调用这些函数。
+
+比如：
+
+```cpp
+DECLARE_MULTICAST_DELEGATE_OneParam(FMyDelegate, int32)
+FMyDelegate MyDelegate;
+```
+
+这是声明了一个“可以传入一个 int 参数”的多播委托。你可以把它看作“函数列表”。
+
+---
+
+### 2. 使用
+
+你可以绑定函数：
+
+```cpp
+MyDelegate.AddUObject(this, &MyClass::MyFunc);
+```
+
+你可以触发委托（广播）：
+
+```cpp
+MyDelegate.Broadcast(42);
+```
+
+这时候，所有绑定到这个委托的函数都会被调用。
+
+---
+
+## ✅ 事件（Event）
+
+事件是 UObject 提供的一种“被覆盖的虚函数”，通常在蓝图中体现为可重写的函数节点（比如 `Event BeginPlay`、`Event Tick`）。
+
+举例：
+
+```cpp
+UFUNCTION(BlueprintNativeEvent)
+void OnHealthChanged(float NewHealth);
+```
+
+或者：
+
+```cpp
+virtual void Tick(float DeltaSeconds) override;
+```
+
+这些是游戏引擎生命周期的一部分，可以在蓝图中响应。
+
+---
+
+## 🧩 二者关系与区别
+
+| 项目  | 委托（Delegate）                        | 事件（Event）                      |
+| --- | ----------------------------------- | ------------------------------ |
+| 本质  | C++函数指针容器                           | C++虚函数（可重写）                    |
+| 功能  | 动态绑定多个函数响应                          | 蓝图或类的固定响应                      |
+| 灵活性 | 高：任意对象+函数可绑定                        | 低：必须继承类并重写                     |
+| 示例  | `OnDamageTakenDelegate.Broadcast()` | `virtual void OnDamageTaken()` |
+
+---
+
+## 🧠 关键理解
+
+* 委托适合**模块之间的解耦通信**（比如 AbilitySystem 通知 UI 血量变化）。
+* 事件适合**生命周期或逻辑行为的“默认”响应机制**（比如角色死亡、进入关卡等）。
+
+你可以在委托中绑定事件函数，二者**可以配合使用**，但用途不同。
+
+# 119.绑定方式
+
+### ✅ `AddDynamic` / `AddUObject` / `AddLambda` / `BindUObject` / `BindLambda`
+
+它们适用于不同类型的委托和使用场景，下面是清晰对比：
+
+| 绑定方式          | 委托类型                                 | 适用于                 | 支持反射/蓝图 | 备注                      |
+| ------------- | ------------------------------------ | ------------------- | ------- | ----------------------- |
+| `AddUObject`  | `DECLARE_MULTICAST_DELEGATE`         | 多播 C++ 原生委托（无反射）    | ❌       | 允许添加多个监听函数              |
+| `BindUObject` | `DECLARE_DELEGATE`                   | 单播 C++ 原生委托（无反射）    | ❌       | 覆盖之前绑定的函数               |
+| `AddDynamic`  | `DECLARE_DYNAMIC_MULTICAST_DELEGATE` | 多播 动态委托（支持蓝图）       | ✅       | 必须使用 `UFUNCTION` 修饰绑定函数 |
+| `BindLambda`  | 任意（常用于单播）                            | 临时绑定 Lambda 表达式     | ❌       | 灵活，但难以解绑                |
+| `AddLambda`   | 通常用于 `Multicast`                     | 多播委托绑定多个 Lambda 表达式 | ❌       | 会添加到调用列表中               |
 
 
+### ✅ 实践建议
 
+| 需求             | 建议使用绑定方式                   |
+| -------------- | -------------------------- |
+| 蓝图可用，监听多个函数    | `AddDynamic`               |
+| C++ 多个监听器，不用蓝图 | `AddUObject`               |
+| 临时处理逻辑，无需解绑    | `BindLambda` / `AddLambda` |
+| 只绑定一个处理器       | `BindUObject`              |
+
+# DeBug8:RequestGameplayTag() 要加FName!!!
 
 
 

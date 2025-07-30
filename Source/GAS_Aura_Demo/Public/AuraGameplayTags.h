@@ -53,6 +53,9 @@ public:
 	//技能类型标签
 	FGameplayTag Abilities_Attack;
 	FGameplayTag Abilities_Summon;
+	FGameplayTag Abilities_Fire_FireBolt;
+	//技能冷却标签
+	FGameplayTag Cooldown_Fire_FireBolt;
 
 	//战斗插槽
 	FGameplayTag CombatSocket_Weapon;
