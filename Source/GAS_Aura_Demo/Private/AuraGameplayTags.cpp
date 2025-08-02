@@ -50,6 +50,10 @@ void FAuraGameplayTags::InitializeNativeGameplayTags()
 		FName("Attributes.Resistance.Arcane"), FString(TEXT("奥术抗性")));
 	GameplayTags.Attributes_Resistance_Physical = UGameplayTagsManager::Get().AddNativeGameplayTag(
 		FName("Attributes.Resistance.Physical"), FString(TEXT("物理抗性")));
+
+	//元属性
+	GameplayTags.Attributes_Meta_IncomingXP = UGameplayTagsManager::Get().AddNativeGameplayTag(
+			FName("Attributes.Meta.IncomingXP"), FString(TEXT("经验元属性标签")));
 	
 	//~ 伤害类型
 	GameplayTags.Damage = UGameplayTagsManager::Get().AddNativeGameplayTag(

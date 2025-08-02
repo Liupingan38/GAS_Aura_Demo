@@ -7762,6 +7762,249 @@ virtual void Tick(float DeltaSeconds) override;
 
 # DeBug8:RequestGameplayTag() 要加FName!!!
 
+# 120.委托&观察者模式
+
+## 🔧 延伸建议（如果你要写面试答案）
+
+你可以这么写：
+
+> “委托是一种事件驱动的函数回调机制，在UE中常用于处理异步任务或广播事件。从设计模式角度看，它实际上是**观察者模式**的一种实现方式：被观察者是事件源，观察者是绑定到委托的函数；当事件触发时，所有观察者都会收到通知。这种机制既提高了模块解耦性，也方便了逻辑扩展和维护。”
+
+---
+
+## 一、相同点（核心思想）
+
+| 共同点  | 说明                    |
+| ---- | --------------------- |
+| 事件驱动 | 都是“当某事发生时，通知其他对象”     |
+| 解耦设计 | 事件的发送方不需要知道接收方是谁      |
+| 动态响应 | 接收方可以在运行时决定是否监听这个事件   |
+| 多播能力 | 通常都允许一个事件被多个响应者监听（多播） |
+
+---
+
+## 二、不同点（实现方式）
+
+| 比较项    | 委托（Delegate）                   | 观察者模式（Observer Pattern） |
+| ------ | ------------------------------ | ----------------------- |
+| 起源     | C# / UE / C++ 中的语言特性或框架支持      | 面向对象设计模式（GoF 23种设计模式之一） |
+| 典型用途   | 事件广播、异步任务通知（UE中如Montage播放完成）   | 系统状态变化通知（如数据模型更新、UI刷新）  |
+| 编码方式   | 通常是函数指针或方法引用（支持语法糖）            | 明确地维护一个“观察者列表”并手动通知     |
+| 是否必须多播 | 可单播或多播（比如UE中有单播委托）             | 默认就是多播，支持多个观察者          |
+| 灵活度    | 语法更简洁，易与蓝图/C++交互（如 AddDynamic） | 更通用，适用于更复杂的订阅管理逻辑       |
+
+---
+
+## 三、在UE中的映射关系
+
+在 Unreal Engine 中，**委托机制本质上是一种观察者模式的封装实现**，尤其是 `MULTICAST` 委托，它背后就是维护了一组“观察者”。
+
+比如这个代码：
+
+```cpp
+DECLARE_DYNAMIC_MULTICAST_DELEGATE(FOnDamageTaken);
+
+UPROPERTY(BlueprintAssignable)
+FOnDamageTaken OnDamageTaken;
+```
+
+它表示：
+
+* 有一个“被攻击”事件；
+* **多个观察者**（如动画系统、音效系统、UI）都可以 `AddDynamic()` 自己的响应函数；
+* 一旦这个委托被 `Broadcast()`，所有观察者都会被自动通知。
+
+这就是观察者模式在UE中的“委托”实现形式。
+
+---
+
+## 四、总结：一句话理解它们的关系
+
+> **委托是观察者模式在Unreal Engine中的一种简化实现和语言层级的封装。**
+
+# 121.“静态工厂模式”和“工厂模式”
+
+## ✅ 一句话总结
+
+> **工厂模式（Factory Pattern）**：通过一个“工厂对象”来创建产品对象（支持多态、可继承）。
+>
+> **静态工厂模式（Static Factory Method）**：通过一个“类的静态方法”来创建对象（没有工厂类实例）。
+
+---
+
+## ✅ 一、概念对比
+
+| 对比项       | 工厂模式（Factory Pattern）         | 静态工厂模式（Static Factory Method） |
+| --------- | ----------------------------- | ----------------------------- |
+| 是否有工厂类对象  | ✅ 有，通常是接口或抽象类的子类              | ❌ 没有，直接用 `static` 方法          |
+| 是否支持继承、多态 | ✅ 支持，不同工厂创建不同子类产品             | ⚠️ 通常不支持工厂多态（但返回值可以多态）        |
+| 是否依赖类实例   | ✅ 工厂类实例负责生产对象                 | ❌ 靠类自身的 `static` 方法           |
+| 代码结构      | 更复杂，更灵活，扩展性好                  | 更简单，结构轻量                      |
+| 使用场景      | 产品类型变化频繁，需要多工厂逻辑              | 创建过程复杂但不需多种产品                 |
+| 例子        | `WeaponFactory.Create("Gun")` | `Weapon::CreateGun()`         |
+
+---
+
+## ✅ 三、总结区别
+
+| 区别维度    | 静态工厂                             | 工厂模式            |
+| ------- | -------------------------------- | --------------- |
+| 简洁性     | ✅ 更简单，函数集中在类本身                   | ❌ 需要多个工厂类       |
+| 扩展性     | ❌ 不支持多工厂子类                       | ✅ 易于扩展（开放封闭原则）  |
+| 多态性     | ⚠️ 不适用于工厂本身的多态                   | ✅ 支持            |
+| 应用典型    | GAS 中的 `UAbilityTask::CreateXXX` | 游戏中敌人、武器等抽象产品创建 |
+| 依赖注入/插件 | ❌ 不方便                            | ✅ 可通过传入不同工厂实现注入 |
+
+---
+
+## ✅ 二、代码对比（C++ 示例）
+
+### 1. 🔧 静态工厂模式（简单快速）
+
+```cpp
+class Enemy {
+public:
+    static Enemy* CreateZombie();
+    static Enemy* CreateRobot();
+};
+
+Enemy* Enemy::CreateZombie() {
+    return new Enemy(/* zombie init */);
+}
+```
+
+使用方式：
+
+```cpp
+Enemy* enemy = Enemy::CreateZombie();
+```
+
+---
+
+### 2. 🏭 工厂模式（多态扩展）
+
+```cpp
+class Enemy {
+public:
+    virtual void Attack() = 0;
+};
+
+class Zombie : public Enemy {
+    void Attack() override { /*...*/ }
+};
+
+class Robot : public Enemy {
+    void Attack() override { /*...*/ }
+};
+
+class EnemyFactory {
+public:
+    virtual Enemy* CreateEnemy() = 0;
+};
+
+class ZombieFactory : public EnemyFactory {
+public:
+    Enemy* CreateEnemy() override { return new Zombie(); }
+};
+```
+
+使用方式：
+
+```cpp
+EnemyFactory* factory = new ZombieFactory();
+Enemy* enemy = factory->CreateEnemy();
+enemy->Attack();
+```
+
+# 122.UNiagaraComponent & UNiagaraSystem
+在 Unreal Engine 中，**玩家身上挂载 Niagara 组件（UNiagaraComponent）** 和 **使用 Niagara 系统（UNiagaraSystem）进行 Spawn** 是两种不同的使用方式，它们各有用途，具体区别如下：
+
+---
+
+### ✅ 一、Niagara Component（组件）
+
+指的是将 Niagara 效果**以组件形式绑定在角色或 Actor 上**，通常使用 `CreateDefaultSubobject<UNiagaraComponent>()` 或 `AddComponent()` 添加。
+
+#### ✅ 适用场景：
+
+* 需要**持续存在、与角色生命周期绑定**的特效（例如：玩家始终环绕的光环、脚底火焰、持续冒烟等）。
+* 可以通过蓝图或 C++ 访问这个组件，进行启动/关闭、改变参数等操作。
+* 特效需要随着角色移动而移动（自动绑定在角色骨骼或位置上）。
+
+#### ✅ 优点：
+
+* 生命周期与角色绑定，不易丢失或泄露资源。
+* 可反复启用/禁用。
+* 支持绑定 socket、骨骼等。
+
+#### ⚠️ 缺点：
+
+* 持续存在可能占用内存和计算资源，尤其是在大规模场景中。
+* 不适合一次性爆发的临时效果。
+
+---
+
+### ✅ 二、Niagara System（SpawnSystem）
+
+指的是**在需要时动态生成 Niagara System 实例**，通常使用 `UNiagaraFunctionLibrary::SpawnSystemAtLocation()` 或 `SpawnSystemAttached()`。
+
+#### ✅ 适用场景：
+
+* 临时/一次性爆发的特效，例如：爆炸、命中特效、瞬时技能特效等。
+* 不需要长期存在，也不需要维护引用。
+
+#### ✅ 优点：
+
+* 灵活，轻量，适合大量快速触发的特效。
+* 自动销毁（如果设定了自动销毁选项）。
+* 不需要手动管理生命周期。
+
+#### ⚠️ 缺点：
+
+* 不能随意访问或修改参数（除非创建时传入）。
+* 生命周期不容易受控，适合瞬时效果。
+
+---
+
+### 🔄 总结对比表：
+
+| 特性     | Niagara Component | Niagara System Spawn |
+| ------ | ----------------- | -------------------- |
+| 生命周期   | 与 Actor 绑定        | 临时存在，自动销毁            |
+| 持续性    | 适合持续存在            | 适合瞬时特效               |
+| 管理方式   | 需要手动添加、控制         | 用完即丢                 |
+| 动态参数修改 | 支持动态修改            | 仅初始化时传参              |
+| 性能消耗   | 占用资源高一些           | 相对更轻量                |
+
+# 123.RPC 执行流程（NetMulticast）
+1.你在服务端调用 MulticastLevelUpParticles();
+2.引擎会自动将这个调用广播给所有客户端
+3.每个客户端自动执行你写的 MulticastLevelUpParticles_Implementation()
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 
