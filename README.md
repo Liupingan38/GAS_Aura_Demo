@@ -7981,19 +7981,285 @@ enemy->Attack();
 2.引擎会自动将这个调用广播给所有客户端
 3.每个客户端自动执行你写的 MulticastLevelUpParticles_Implementation()
 
+# Debug9：服务器属性点和法术点在初始化时正常，变更时也正常；而在客户端属性点和法术点的无法变更！！！
+
+## ✅没有注册到网络同步的变量DOREPLIFETIME中
+
+### 一、`DOREPLIFETIME` 是什么？
+
+`DOREPLIFETIME` 是 Unreal 提供的一个宏，用于注册需要在 **网络中同步（Replicate）** 的变量。
+
+#### 定义：
+
+```cpp
+DOREPLIFETIME(ClassName, VariableName)
+```
+
+* `ClassName`: 拥有这个变量的类名
+* `VariableName`: 你希望在网络中同步的成员变量
+
+---
+
+### 二、`GetLifetimeReplicatedProps` 是什么？
+
+这是一个虚函数，定义在 `AActor` 或其子类中，用于告诉引擎 **哪些变量需要同步**，以及它们的同步条件。
+
+#### 示例：
+
+```cpp
+void AAuraPlayerState::GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& OutLifetimeProps) const
+{
+    Super::GetLifetimeReplicatedProps(OutLifetimeProps);
+
+    DOREPLIFETIME(AAuraPlayerState, Level);
+    DOREPLIFETIME(AAuraPlayerState, XP);
+}
+```
+
+这段代码的含义是：
+
+* `Level` 和 `XP` 两个变量会在服务端更新时自动同步到客户端。
+* 必须确保这两个变量具有 `UPROPERTY(Replicated)` 宏标记。
+
+---
+
+### 三、使用步骤总结：
+
+1. **变量声明**时添加 `UPROPERTY(Replicated)`：
+
+   ```cpp
+   UPROPERTY(Replicated)
+   int32 Level;
+   ```
+
+2. **重写 `GetLifetimeReplicatedProps()`**：
+
+   ```cpp
+   virtual void GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& OutLifetimeProps) const override;
+   ```
+
+3. **实现函数**中使用 `DOREPLIFETIME()` 注册同步字段。
 
 
 
+# 123.`MarkAbilitySpecDirty` 
+
+### ✅ 1. 定义
+- AbilitySpec 需要被同步到客户端**的函数。它的作用是告诉引擎：这个能力的状态发生了改变，需要在网络中同步到其他角色（比如从服务器同步到客户端）。
+- ### ✅ 2. 注意
+* 只能在服务端调用。
+* 修改 `FGameplayAbilitySpec` 的任何关键字段后都应该调用。
+* 如果你是通过 `ModifyActiveGameplayAbilitySpec` 间接修改，也会自动标记为 dirty。
+
+# 124.仅Server端API
+
+## ✅ **只在服务端有效/推荐仅在服务端调用的 API**
+
+| 函数 / 方法名                                                        | 说明                                      | 原因                                                       |
+| --------------------------------------------------------------- | --------------------------------------- | -------------------------------------------------------- |
+| `GiveAbility()`                                                 | 向 AbilitySystemComponent 授予一个新的 Ability | 必须在服务器执行，否则不会同步给客户端，客户端调用无效且无权限                          |
+| `ClearAbility()` / `ClearAllAbilities()`                        | 清除某个能力或所有能力                             | 同上，仅服务端才能操作                                              |
+| `ApplyGameplayEffectToTarget()` / `ApplyGameplayEffectToSelf()` | 应用 GE 到目标或自身                            | 服务端调用才具有“权威性”，客户端调用只是本地预测，不能触发真正的 GE 效果同步                |
+| `MarkAbilitySpecDirty()`                                        | 标记某个 AbilitySpec 为 Dirty，促使其状态同步        | 仅服务端有效，否则标记无效                                            |
+| `RemoveActiveGameplayEffect()`                                  | 移除某个激活的 GE                              | 应在服务端进行，否则不会同步                                           |
+| `TryActivateAbility()` / `TryActivateAbilitiesByTag()`          | 激活能力                                    | 支持客户端调用，但仅客户端 **拥有 Input 权限的情况下才有效**，否则应通过 Server RPC 激活 |
+| `BindToAbilitySystemComponent()`                                | 通常仅在服务端做初始化绑定，客户端可能缺少权限或对象尚未准备好         |                                                          |
+| `AddLooseGameplayTag()` / `RemoveLooseGameplayTag()`            | 添加/移除非 GE 驱动的 tag                       | 通常只在服务端添加才会同步到客户端                                        |
+| `InitAbilityActorInfo()`                                        | 初始化 GAS 所需的 ActorInfo 信息结构体             | 通常在服务端控制初始化顺序                                            |
 
 
+## 🔍 如何判断某函数在哪执行？
+
+你可以通过以下方式判断函数是在服务端还是客户端执行：
+
+### ✅ **1. 使用 `HasAuthority()`**
+
+```cpp
+if (GetOwnerRole() == ROLE_Authority)
+{
+    // 仅在服务端执行
+}
+```
+
+### ✅ **2. 使用 `IsNetMode()`**
+
+```cpp
+if (GetNetMode() == NM_Client)
+{
+    // 客户端执行
+}
+```
+
+### ✅ **3. 日志打印加前缀**
+
+```cpp
+UE_LOG(LogTemp, Warning, TEXT("Server: %s"), *HasAuthority() ? TEXT("YES") : TEXT("NO"));
+```
+
+# 125.Client RPC
+
+你问的很好，我们来逐句分析 `ClientUpdateAbilityStatus` 为什么使用 `UFUNCTION(Client, Reliable)` 修饰：
+
+---
+
+### ✅ 一、`Client` 的含义：**表示这是一个 Server 调用 Client 执行的 RPC（Remote Procedure Call）**
+
+```cpp
+UFUNCTION(Client, Reliable)
+void ClientUpdateAbilityStatus(const FGameplayTag& AbilityTag, const FGameplayTag& StatusTag);
+```
+
+这意味着：
+
+* **只能在 Server 上调用此函数**
+* **最终会在对应的 Client 上执行 `ClientUpdateAbilityStatus_Implementation` 的函数体**
+
+这通常用于：
+
+> **Server 需要通知特定 Client 某个状态更新或事件发生（如能力状态变化）**，而该状态更新 **不需要同步给所有客户端**，只需发送给目标 Client 即可。
+
+---
+
+### ✅ 二、为什么是 `Reliable`？
+
+`Reliable` 关键字意味着：
+
+* **这个 RPC 是可靠的**，Unreal 会**保证它到达客户端并被执行**（除非网络完全断开）。
+* 如果网络延迟或丢包，它会**自动重试**发送，直到成功或连接断开。
+
+这对于重要但不频繁的消息非常适合，例如：
+
+* 通知客户端“你已经获得某个技能，但状态是未激活”
+* 通知“血条显示变化”
+* 通知“你获得某个增益/减益效果”等
 
 
+### ❓为什么不用 `Multicast`？
 
+如果用了 `Multicast`，那么这个 RPC 会在 **所有客户端** 上执行，但能力状态是 **与角色绑定的私有数据**，只需要发送给**自己所属客户端**，不需要让别人也看到。
 
+所以这里必须是：
 
+> 🔒**Client RPC，点对点私密传输**
 
+---
 
+### ✅ 小结
 
+| 修饰符             | 意义                        |
+| --------------- | ------------------------- |
+| `Client`        | Server 发起，指定 Client 执行    |
+| `Reliable`      | 网络可靠传输，保证送达               |
+| 场景适配            | 状态同步 UI、单人通知、播放动画、HUD 提示等 |
+| 为什么不用 Multicast | 不需要广播，目标 Client 私人状态      |
+
+# BUG 10：点击锁定的技能图标，无法得到GameMode上的AbilityInfo数据资产
+只在服务器端有效（GameMode 是纯服务端类，客户端是没有 GameMode 实例的）
+
+如果在客户端调用，这个函数会返回 nullptr
+
+# BUG 11.无法获取冷却和法术消耗
+### 引用修改请不要赋值
+```cpp
+float URPGGameplayAbility::GetCooldown(const float InLevel) const
+{
+	float Cooldown = 0.f;
+	//获取到技能冷却GE
+	if(const UGameplayEffect* CooldownEffect = GetCooldownGameplayEffect())
+	{
+		//获取到当前冷却时间
+		CooldownEffect->DurationMagnitude.GetStaticMagnitudeIfPossible(InLevel, Cooldown);
+	}
+	return Cooldown;
+}
+```
+
+# 126.Restore State（动画）
+## **定义**
+
+当动画结束时，**是否恢复到动画开始前的原始属性值**。
+
+* **勾选 `Restore State`**
+  → 动画结束后，控件的属性（位置、大小、透明度、缩放等）会**自动回到动画开始前的值**。
+  → 就好像“播放完撤销动画的改动”。
+
+* **不勾选 `Restore State`**
+  → 动画结束后，控件会**保持动画结束时的值**，不会自动回到原状态。
+  → 比如动画把缩放改到 1.5，播放完还会停留在 1.5。
+
+# 127（DEBUG）事件解绑
+* BUG：每次打开法术菜单，装配技能，再关闭，再打开，装配技能的声音越来越大
+* 原因：每次打开都生成了一个新的委托，委托越来越多
+* 解决：在Destruct中解绑所有委托（只关注涉及WC的委托）
+
+在 Unreal Engine（UE）蓝图或 C++ 中，**Button 点击事件的解绑是否自动进行**，要看你是如何绑定的，以及 Button 或 Widget 是怎么被管理和销毁的。
+
+---
+
+### ✅ **1. 如果你是使用蓝图自动绑定（OnClicked → 事件节点）**
+
+这类绑定：
+
+```plaintext
+Button → OnClicked (事件) → 自定义函数
+```
+
+**✔ 自动解绑**。因为这属于 **事件绑定到当前 Widget 生命周期内**，当 Widget 销毁时，会连带清理。
+
+---
+
+### ✅ **2. 如果你用 C++ 绑定并且 Button 是 UPROPERTY() 管理的**
+
+例如：
+
+```cpp
+MyButton->OnClicked.AddDynamic(this, &UMyWidget::HandleButtonClicked);
+```
+
+如果 `MyButton` 是 `UPROPERTY()` 管理的组件，且 Widget 本身生命周期被 UMG/GC 管理得当：
+
+✅ 通常会自动解绑。
+
+---
+
+### ⚠️ **3. 如果你是动态创建的 Widget 或按钮，并且没有销毁前解绑**
+
+则：
+
+* **事件会一直存在**；
+* 如果绑定目标对象被销毁但没解绑，可能造成：
+
+  * 崩溃（访问空指针）
+  * 多次触发（重复绑定）
+  * 内存泄漏（引用链阻止GC）
+
+---
+
+### ✅ **推荐做法**：
+
+#### 👉 在 `NativeDestruct()` 或 `OnRemovedFromParent()` 中手动解绑：
+
+```cpp
+MyButton->OnClicked.RemoveDynamic(this, &UMyWidget::HandleButtonClicked);
+```
+
+#### 👉 或在绑定前先移除旧绑定：
+
+```cpp
+MyButton->OnClicked.RemoveAll(this);
+MyButton->OnClicked.AddDynamic(this, &UMyWidget::HandleButtonClicked);
+```
+
+---
+
+### ✅ 总结：
+
+| 绑定方式                            | 是否自动解绑        |
+| ------------------------------- | ------------- |
+| 蓝图事件                            | ✅ 是           |
+| C++ 动态绑定（用 UPROPERTY 管理）        | ✅ 是（通常）       |
+| C++ 动态绑定（无 UPROPERTY 管理或控件重复使用） | ❌ 否（需手动解绑）    |
+| 动态创建 Button 或 Widget            | ❌ 视情况（推荐手动解绑） |
 
 
 

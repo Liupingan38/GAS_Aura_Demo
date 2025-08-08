@@ -85,22 +85,51 @@ void FAuraGameplayTags::InitializeNativeGameplayTags()
 		FName("InputTag.3"), FString(TEXT("键盘 3 键的输入标签")));
 	GameplayTags.InputTag_4 = UGameplayTagsManager::Get().AddNativeGameplayTag(
 		FName("InputTag.4"), FString(TEXT("键盘 4 键的输入标签")));
+	GameplayTags.InputTag_Passive_1 = UGameplayTagsManager::Get().AddNativeGameplayTag(
+		FName("InputTag.Passive.1"), FString(TEXT("无输入被动 1 的输入标签")));
+	GameplayTags.InputTag_Passive_2= UGameplayTagsManager::Get().AddNativeGameplayTag(
+		FName("InputTag.Passive.2"), FString(TEXT("无输入被动 2 的输入标签")));
 	
 	//~ Effects
 	GameplayTags.Effects_HitReact = UGameplayTagsManager::Get().AddNativeGameplayTag(
 		FName("Effects.HitReact"), FString(TEXT("受击反应时赋予标签")));
 
 	//~ 技能
+	GameplayTags.Abilities_Status_Locked = UGameplayTagsManager::Get().AddNativeGameplayTag(
+		FName("Abilities.Status.Locked"), FString(TEXT("未解锁 技能状态")));
+	GameplayTags.Abilities_Status_UnLearned = UGameplayTagsManager::Get().AddNativeGameplayTag(
+		FName("Abilities.Status.UnLearned"), FString(TEXT("未学习 技能状态")));
+	GameplayTags.Abilities_Status_UnEquipped = UGameplayTagsManager::Get().AddNativeGameplayTag(
+		FName("Abilities.Status.UnEquipped"), FString(TEXT("未装备 技能状态")));
+	GameplayTags.Abilities_Status_Equipped = UGameplayTagsManager::Get().AddNativeGameplayTag(
+		FName("Abilities.Status.Equipped"), FString(TEXT("装备 技能状态")));
+	
+	GameplayTags.Abilities_Type_Offensive = UGameplayTagsManager::Get().AddNativeGameplayTag(
+		FName("Abilities.Type.Offensive"), FString(TEXT("攻击性技能类型")));
+	GameplayTags.Abilities_Type_Passive = UGameplayTagsManager::Get().AddNativeGameplayTag(
+		FName("Abilities.Type.Passive"), FString(TEXT("被动技能类型")));
+	GameplayTags.Abilities_Type_None = UGameplayTagsManager::Get().AddNativeGameplayTag(
+		FName("Abilities.Type.None"), FString(TEXT("非法术技能类型")));
+
+	GameplayTags.Abilities_None = UGameplayTagsManager::Get().AddNativeGameplayTag(
+		FName("Abilities.None"), FString(TEXT("无技能空指针")));
+	GameplayTags.Abilities_HitReact = UGameplayTagsManager::Get().AddNativeGameplayTag(
+		FName("Abilities.HitReact"), FString(TEXT("受击反应技能")));
 	GameplayTags.Abilities_Attack = UGameplayTagsManager::Get().AddNativeGameplayTag(
-		FName("Abilities.Attack"), FString(TEXT("攻击技能类型")));
+		FName("Abilities.Attack"), FString(TEXT("攻击技能")));
 	GameplayTags.Abilities_Summon = UGameplayTagsManager::Get().AddNativeGameplayTag(
-		FName("Abilities.Summon"), FString(TEXT("召唤技能类型")));
+		FName("Abilities.Summon"), FString(TEXT("召唤技能")));
 	GameplayTags.Abilities_Fire_FireBolt = UGameplayTagsManager::Get().AddNativeGameplayTag(
 		FName("Abilities.Fire.FireBolt"), FString(TEXT("火球术")));
+	GameplayTags.Abilities_Lighting_Electrocute = UGameplayTagsManager::Get().AddNativeGameplayTag(
+		FName("Abilities.Lighting.Electrocute"), FString(TEXT("电击术")));
 	
 	//~ 技能冷却
 	GameplayTags.Cooldown_Fire_FireBolt = UGameplayTagsManager::Get().AddNativeGameplayTag(
 	FName("Cooldown.Fire.FireBolt"), FString(TEXT("火球术 技能冷却")));
+
+	GameplayTags.Cooldown_Lighting_Electrocute = UGameplayTagsManager::Get().AddNativeGameplayTag(
+	FName("Cooldown.Lighting.Electrocute"), FString(TEXT("电击术 技能冷却")));
 	
 	//~ 战斗插槽 
 	GameplayTags.CombatSocket_Weapon = UGameplayTagsManager::Get().AddNativeGameplayTag(
