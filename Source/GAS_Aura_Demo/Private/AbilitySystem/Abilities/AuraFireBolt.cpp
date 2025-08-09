@@ -3,11 +3,10 @@
 
 #include "AbilitySystem/Abilities/AuraFireBolt.h"
 
-#include "AuraGameplayTags.h"
 
 FString UAuraFireBolt::GetDescription(int32 AbilityLevel)
 {
-	const int32 Damage = GetDamageByDamageTypeTag(AbilityLevel,FAuraGameplayTags::Get().Damage_Fire);
+	const int32 ScaledDamage = Damage.GetValueAtLevel(AbilityLevel);
 	const float ManaCost=GetManaCost(AbilityLevel);
 	const float Cooldown=GetCooldown(AbilityLevel);
 	return FString::Printf(TEXT(
@@ -28,13 +27,13 @@ FString UAuraFireBolt::GetDescription(int32 AbilityLevel)
 		Cooldown,
 		FMath::Abs(ManaCost),
 		FMath::Min(AbilityLevel,NumProjectiles),
-		Damage
+		ScaledDamage
 	);
 }
 
 FString UAuraFireBolt::GetNextLevelDescription(int32 NextAbilityLevel)
 {
-	const int32 Damage = GetDamageByDamageTypeTag(NextAbilityLevel,FAuraGameplayTags::Get().Damage_Fire);
+	const int32 ScaledDamage = Damage.GetValueAtLevel(NextAbilityLevel);
 	const float ManaCost=GetManaCost(NextAbilityLevel);
 	const float Cooldown=GetCooldown(NextAbilityLevel);
 	return FString::Printf(TEXT(
@@ -55,6 +54,6 @@ FString UAuraFireBolt::GetNextLevelDescription(int32 NextAbilityLevel)
 		Cooldown,
 		FMath::Abs(ManaCost),
 		FMath::Min(NextAbilityLevel,NumProjectiles),
-		Damage
+		ScaledDamage
 	);
 }

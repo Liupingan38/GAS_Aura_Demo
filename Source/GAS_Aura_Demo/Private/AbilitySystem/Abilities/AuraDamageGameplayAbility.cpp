@@ -9,14 +9,30 @@
 void UAuraDamageGameplayAbility::CauseDamage(AActor* Target)
 {
 	const FGameplayEffectSpecHandle SpecHandle = MakeOutgoingGameplayEffectSpec(DamageEffectClass, 1.f);
-	for (const auto& Pair : DamageTypes)
-	{
-		const float ScaleDamage = Pair.Value.GetValueAtLevel(GetAbilityLevel());
-		//设置DamageEffectClass 中SetByCaller 【不同伤害类型Tag：和其在某一等级具体的值】
-		UAbilitySystemBlueprintLibrary::AssignTagSetByCallerMagnitude(SpecHandle, Pair.Key, ScaleDamage); 
-	}
+	
+	const float ScaleDamage = Damage.GetValueAtLevel(GetAbilityLevel());
+	//设置DamageEffectClass 中SetByCaller 
+	UAbilitySystemBlueprintLibrary::AssignTagSetByCallerMagnitude(SpecHandle, DamageType, ScaleDamage); 
+
 	GetAbilitySystemComponentFromActorInfo()->ApplyGameplayEffectSpecToTarget(*SpecHandle.Data.Get(),
-	                                                                          UAbilitySystemBlueprintLibrary::GetAbilitySystemComponent(Target));
+	UAbilitySystemBlueprintLibrary::GetAbilitySystemComponent(Target));
+}
+
+FDamageEffectParams UAuraDamageGameplayAbility::MakeDamageEffectParamsFromClassDefaults(AActor* TargetActor) const
+{
+	FDamageEffectParams Params;
+	Params.WorldContextObject=GetAvatarActorFromActorInfo();
+	Params.SourceAbilitySystemComponent=GetAbilitySystemComponentFromActorInfo();
+	Params.TargetAbilitySystemComponent=UAbilitySystemBlueprintLibrary::GetAbilitySystemComponent(TargetActor);
+	Params.DamageGameplayEffectClass=DamageEffectClass;
+	Params.BaseDamage=Damage.GetValueAtLevel(GetAbilityLevel());
+	Params.AbilityLevel=GetAbilityLevel();
+	Params.DamageType=DamageType;
+	Params.DebuffChance=DebuffChance;
+	Params.DebuffDamage=DebuffDamage;
+	Params.DebuffDuration=DebuffDuration;
+	Params.DebuffFrequency=DebuffFrequency;
+	return Params;
 }
 
 FTaggedMontage UAuraDamageGameplayAbility::GetRandomTaggedMontageFromArray(const TArray<FTaggedMontage>& TaggedMontageArray) const
@@ -26,8 +42,3 @@ FTaggedMontage UAuraDamageGameplayAbility::GetRandomTaggedMontageFromArray(const
 	return TaggedMontageArray[Selection];
 }
 
-float UAuraDamageGameplayAbility::GetDamageByDamageTypeTag(int32 InLevel, const FGameplayTag& DamageTypeTag) const
-{
-	checkf(DamageTypes.Contains(DamageTypeTag), TEXT("技能[%s] 不包含伤害类型[%s]."),*GetNameSafe(this),*DamageTypeTag.ToString());
-	return DamageTypes[DamageTypeTag].GetValueAtLevel(InLevel);
-}

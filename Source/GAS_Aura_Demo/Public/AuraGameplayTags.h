@@ -31,11 +31,29 @@ public:
 	FGameplayTag Attributes_Secondary_MaxHealth;
 	FGameplayTag Attributes_Secondary_MaxMana;
 
-	//实际上也是次级属性
+	//伤害抗性，实际上也是次级属性
 	FGameplayTag Attributes_Resistance_Fire;
 	FGameplayTag Attributes_Resistance_Lighting;
 	FGameplayTag Attributes_Resistance_Arcane;
 	FGameplayTag Attributes_Resistance_Physical;
+
+	//伤害类型
+	FGameplayTag Damage;
+	FGameplayTag Damage_Fire;
+	FGameplayTag Damage_Lighting;
+	FGameplayTag Damage_Arcane;
+	FGameplayTag Damage_Physical;
+
+	//减益效果
+	FGameplayTag Debuff_Burn;
+	FGameplayTag Debuff_Stun;
+	FGameplayTag Debuff_Weak;
+	FGameplayTag Debuff_Blood;
+
+	FGameplayTag Debuff_Chance;
+	FGameplayTag Debuff_Damage;
+	FGameplayTag Debuff_Duration;
+	FGameplayTag Debuff_Frequency;
 
 	//元属性
 	FGameplayTag Attributes_Meta_IncomingXP;
@@ -48,12 +66,6 @@ public:
 	FGameplayTag InputTag_4;
 	FGameplayTag InputTag_Passive_1;
 	FGameplayTag InputTag_Passive_2;
-
-	FGameplayTag Damage;
-	FGameplayTag Damage_Fire;
-	FGameplayTag Damage_Lighting;
-	FGameplayTag Damage_Arcane;
-	FGameplayTag Damage_Physical;
 
 	//技能类型标签
 	FGameplayTag Abilities_Status_Locked;
@@ -89,7 +101,8 @@ public:
 	FGameplayTag Montage_Attack_4;
 	
 	TMap<FGameplayTag,FGameplayTag> DamageTypesToResistances;
-
+	TMap<FGameplayTag,FGameplayTag> DamageTypesToDebuffs;
+	
 	FGameplayTag Effects_HitReact;
 
 private:

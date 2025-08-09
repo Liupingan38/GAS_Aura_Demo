@@ -51,9 +51,24 @@ void FAuraGameplayTags::InitializeNativeGameplayTags()
 	GameplayTags.Attributes_Resistance_Physical = UGameplayTagsManager::Get().AddNativeGameplayTag(
 		FName("Attributes.Resistance.Physical"), FString(TEXT("物理抗性")));
 
-	//元属性
-	GameplayTags.Attributes_Meta_IncomingXP = UGameplayTagsManager::Get().AddNativeGameplayTag(
-			FName("Attributes.Meta.IncomingXP"), FString(TEXT("经验元属性标签")));
+	//~ Debuff
+	GameplayTags.Debuff_Burn = UGameplayTagsManager::Get().AddNativeGameplayTag(
+		FName("Debuff.Burn"), FString(TEXT("火焰伤害会造成燃烧负面效果")));
+	GameplayTags.Debuff_Stun = UGameplayTagsManager::Get().AddNativeGameplayTag(
+		FName("Debuff.Stun"), FString(TEXT("雷电伤害会造成眩晕负面效果")));
+	GameplayTags.Debuff_Weak = UGameplayTagsManager::Get().AddNativeGameplayTag(
+		FName("Debuff.Weak"), FString(TEXT("奥数伤害会造成虚弱负面效果")));
+	GameplayTags.Debuff_Blood = UGameplayTagsManager::Get().AddNativeGameplayTag(
+		FName("Debuff.Blood"), FString(TEXT("物理伤害会造成流血负面效果")));
+
+	GameplayTags.Debuff_Chance = UGameplayTagsManager::Get().AddNativeGameplayTag(
+		FName("Debuff.Chance"), FString(TEXT("负面效果概率")));
+	GameplayTags.Debuff_Damage = UGameplayTagsManager::Get().AddNativeGameplayTag(
+		FName("Debuff.Damage"), FString(TEXT("负面效果伤害")));
+	GameplayTags.Debuff_Duration = UGameplayTagsManager::Get().AddNativeGameplayTag(
+		FName("Debuff.Duration"), FString(TEXT("负面效果持续时间")));
+	GameplayTags.Debuff_Frequency = UGameplayTagsManager::Get().AddNativeGameplayTag(
+		FName("Debuff.Frequency"), FString(TEXT("负面效果频率")));
 	
 	//~ 伤害类型
 	GameplayTags.Damage = UGameplayTagsManager::Get().AddNativeGameplayTag(
@@ -71,6 +86,16 @@ void FAuraGameplayTags::InitializeNativeGameplayTags()
 	GameplayTags.DamageTypesToResistances.Add(GameplayTags.Damage_Lighting,GameplayTags.Attributes_Resistance_Lighting);
 	GameplayTags.DamageTypesToResistances.Add(GameplayTags.Damage_Arcane,GameplayTags.Attributes_Resistance_Arcane);
 	GameplayTags.DamageTypesToResistances.Add(GameplayTags.Damage_Physical,GameplayTags.Attributes_Resistance_Physical);
+		//伤害类型到抗性的映射表
+	GameplayTags.DamageTypesToDebuffs.Add(GameplayTags.Damage_Fire,GameplayTags.Debuff_Burn);
+	GameplayTags.DamageTypesToDebuffs.Add(GameplayTags.Damage_Lighting,GameplayTags.Debuff_Stun);
+	GameplayTags.DamageTypesToDebuffs.Add(GameplayTags.Damage_Arcane,GameplayTags.Debuff_Weak);
+	GameplayTags.DamageTypesToDebuffs.Add(GameplayTags.Damage_Physical,GameplayTags.Debuff_Blood);
+	
+
+	//元属性
+	GameplayTags.Attributes_Meta_IncomingXP = UGameplayTagsManager::Get().AddNativeGameplayTag(
+			FName("Attributes.Meta.IncomingXP"), FString(TEXT("经验元属性标签")));
 	
 	//~ Input Tags
 	GameplayTags.InputTag_LMB = UGameplayTagsManager::Get().AddNativeGameplayTag(
