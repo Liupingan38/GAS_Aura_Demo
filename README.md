@@ -8187,7 +8187,7 @@ float URPGGameplayAbility::GetCooldown(const float InLevel) const
   → 动画结束后，控件会**保持动画结束时的值**，不会自动回到原状态。
   → 比如动画把缩放改到 1.5，播放完还会停留在 1.5。
 
-# 127（DEBUG）事件解绑
+# 127.（DEBUG）事件解绑
 * BUG：每次打开法术菜单，装配技能，再关闭，再打开，装配技能的声音越来越大
 * 原因：每次打开都生成了一个新的委托，委托越来越多
 * 解决：在Destruct中解绑所有委托（只关注涉及WC的委托）
@@ -8261,9 +8261,100 @@ MyButton->OnClicked.AddDynamic(this, &UMyWidget::HandleButtonClicked);
 | C++ 动态绑定（无 UPROPERTY 管理或控件重复使用） | ❌ 否（需手动解绑）    |
 | 动态创建 Button 或 Widget            | ❌ 视情况（推荐手动解绑） |
 
+# 128.属性捕获定义（ACD）单例结构体
+在你这个代码里，**`AuraDamageStatics`** 和 **`DamageStatics()`** 的区别其实是 **“数据结构本身”** 和 **“获取这个结构的静态单例”** 的区别。
+
+---
+
+## 1. **AuraDamageStatics**
+
+```cpp
+struct AuraDamageStatics
+{
+    // 各种捕获定义
+    DECLARE_ATTRIBUTE_CAPTUREDEF(Armor)
+    ...
+    TMap<FGameplayTag, FGameplayEffectAttributeCaptureDefinition> TagsToCaptureDefs;
+
+    AuraDamageStatics()
+    {
+        // 初始化捕获定义
+        DEFINE_ATTRIBUTE_CAPTUREDEF(...)
+        // 把 Tag 映射到捕获定义
+        TagsToCaptureDefs.Add(...);
+    }
+};
+```
+
+* 这是一个**结构体类型**，里面存放所有的捕获定义和 tag 映射。
+* 你每次 `AuraDamageStatics()`（注意：这是类型，不是函数）直接构造，都会得到一个新的对象，数据会重新初始化。
+* 如果在多个地方都需要用这些捕获定义，而每次都 `AuraDamageStatics()` 新建，会重复分配内存、重复做初始化，不划算。
+
+---
+
+## 2. **DamageStatics()**
+
+```cpp
+static const AuraDamageStatics& DamageStatics()
+{
+    static AuraDamageStatics DStatics;
+    return DStatics;
+}
+```
+
+* 这是一个**函数**，返回一个**唯一的 AuraDamageStatics 实例**（单例模式）。
+* 第一次调用时，`DStatics` 会被构造（初始化捕获定义和 tag 映射）。
+* 后面再调用时，直接返回这个已构造好的对象，**不会重新初始化**。
+* 这样保证：
+
+  1. 数据只有一份（节省内存）
+  2. 捕获定义只初始化一次（节省 CPU）
+  3. 多个地方调用得到的引用是同一份数据（不会不一致）
+
+# 129.`MakeShareable`&`MakeShared`
+
+## 1️⃣ `MakeShareable`
+
+* **来自 UE 的智能指针系统**（`TSharedPtr` / `TSharedRef`）。
+* 作用是**把一个原始指针包进 `TSharedPtr`**，并且接管它的生命周期。
+* 一般用在你已经有 `new` 出来的裸指针时：
+
+```cpp
+TSharedPtr<FMyStruct> Ptr = MakeShareable(new FMyStruct());
+```
+
+⚠️ 注意：
+
+* `MakeShareable` **不会**自己 `new`，你得自己传裸指针进去。
+* 一旦传进去，这个裸指针就由 `TSharedPtr` 管，不要再手动 `delete`。
+
+---
+
+## 2️⃣ `MakeShared`
+
+* **C++ 标准库 / UE5 提供的更安全高效的工厂函数**（C++11 引入的 `std::make_shared` 概念）。
+* 作用是**直接在堆上分配并构造对象**，返回一个 `TSharedPtr`。
+* 更高效：一次内存分配就能同时存对象和引用计数（而 `MakeShareable(new ...)` 会分配两次）。
+
+```cpp
+TSharedPtr<FMyStruct> Ptr = MakeShared<FMyStruct>(Arg1, Arg2);
+```
+
+这里 `(Arg1, Arg2)` 会直接传给 `FMyStruct` 的构造函数。
+
+---
+
+## 🔍 对比表
+
+| 特性      | `MakeShareable`     | `MakeShared`    |
+| ------- | ------------------- | --------------- |
+| 谁负责分配对象 | 你自己 `new`           | 它自己分配           |
+| 分配次数    | 2 次（对象 + 引用计数分开）    | 1 次（对象和引用计数一起）  |
+| 安全性     | 较低（必须小心 new/delete） | 较高（不会遗忘 delete） |
+| 用途      | 已有裸指针时              | 新建对象时           |
 
 
-
+# DEBUG 11.通过接口实现获取敌人身上的委托时，使用&，否则可能出错（如死亡时OnDeath）
 
 
 

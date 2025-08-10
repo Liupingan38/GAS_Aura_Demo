@@ -127,7 +127,7 @@ void UAuraAttributeSet::PostGameplayEffectExecute(const struct FGameplayEffectMo
 	SetEffectProperties(Data, Props);
 
 	//若目标角色死亡，不在施加 GameplayEffect
-	if (Props.TargetAvatarActor->Implements<UCombatInterface>()&&ICombatInterface::Execute_IsDie(Props.TargetAvatarActor)) return;
+	if (Props.TargetAvatarActor->Implements<UCombatInterface>() && ICombatInterface::Execute_IsDie(Props.TargetAvatarActor)) return;
 
 	if (Data.EvaluatedData.Attribute == GetHealthAttribute())
 	{
@@ -160,15 +160,23 @@ void UAuraAttributeSet::HandleIncomingDamage(const FEffectProperties& Props)
 		{
 			if (ICombatInterface* CombatInterface = Cast<ICombatInterface>(Props.TargetAvatarActor))
 			{
-				CombatInterface->Die();
+				const FVector DeathImpulse=UAuraAbilitySystemLibrary::GetDeathImpulse(Props.EffectContextHandle);
+				CombatInterface->Die(DeathImpulse);
 			}
 			SendXPEvent(Props);
+			
 		}
-		else
+		else //处理受击与击退
 		{
 			FGameplayTagContainer TagContainer;
 			TagContainer.AddTag(FAuraGameplayTags::Get().Effects_HitReact);
 			Props.TargetASC->TryActivateAbilitiesByTag(TagContainer);
+
+			const FVector& KnockbackImpulse=UAuraAbilitySystemLibrary::GetKnockbackImpulse(Props.EffectContextHandle);
+			if (!KnockbackImpulse.IsNearlyZero(1.f))
+			{
+				Props.TargetCharacter->LaunchCharacter(KnockbackImpulse,true,true);
+			}
 		}
 		const bool bIsBlockedHit = UAuraAbilitySystemLibrary::IsBlockedHit(Props.EffectContextHandle);
 		const bool bIsCriticalHit = UAuraAbilitySystemLibrary::IsCriticalHit(Props.EffectContextHandle);
@@ -288,7 +296,7 @@ void UAuraAttributeSet::PostAttributeChange(const FGameplayAttribute& Attribute,
 void UAuraAttributeSet::ShowFloatingText(const FEffectProperties& Props, float Damage, bool bIsBlockedHit,
                                          bool bIsCriticalHit) const
 {
-	if (Props.TargetCharacter != Props.SourceCharacter)
+	if (Props.SourceCharacter && (Props.TargetCharacter != Props.SourceCharacter))
 	{
 		//若伤害来源是玩家【伤害数始终显示在PlayerController上】
 		if (AAuraPlayerController* PC = Cast<AAuraPlayerController>(Props.SourceCharacter->Controller))

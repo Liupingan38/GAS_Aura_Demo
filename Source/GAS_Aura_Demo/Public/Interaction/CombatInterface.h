@@ -11,6 +11,9 @@
 class UNiagaraSystem;
 class UAnimMontage;
 
+DECLARE_MULTICAST_DELEGATE_OneParam(FOnASCRegistered, UAbilitySystemComponent*);
+DECLARE_DYNAMIC_MULTICAST_DELEGATE_OneParam(FOnDeath, AActor*, DeadActor);
+
 USTRUCT(BlueprintType)
 struct FTaggedMontage
 {
@@ -23,7 +26,7 @@ struct FTaggedMontage
 	FGameplayTag MontageTag;
 
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly)
-	FGameplayTag SocketTag; 
+	FGameplayTag SocketTag;
 
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly)
 	USoundBase* ImpactSound = nullptr;
@@ -45,7 +48,6 @@ class GAS_AURA_DEMO_API ICombatInterface
 
 	// Add interface functions to this class. This is the class that will be inherited to implement this interface.
 public:
-
 	UFUNCTION(BlueprintNativeEvent, BlueprintCallable)
 	FVector GetCombatSocketLocation(const FGameplayTag& SocketTag);
 
@@ -61,7 +63,7 @@ public:
 	UFUNCTION(BlueprintNativeEvent, BlueprintCallable)
 	bool IsDie() const;
 
-	virtual void Die() =0;
+	virtual void Die(const FVector& DeathImpulse) =0;
 
 	UFUNCTION(BlueprintNativeEvent, BlueprintCallable)
 	TArray<FTaggedMontage> GetAttackMontages();
@@ -80,7 +82,10 @@ public:
 
 	UFUNCTION(BlueprintNativeEvent, BlueprintCallable)
 	ECharacterClass GetCharacterClass();
-	
+
 	UFUNCTION(BlueprintNativeEvent, BlueprintCallable)
 	int32 GetCombatCharacterLevel();
+
+	virtual FOnASCRegistered& GetOnASCRegisteredDelegate() =0;
+	virtual FOnDeath& GetOnDeathDelegate() =0;
 };

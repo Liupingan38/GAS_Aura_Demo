@@ -130,9 +130,12 @@ FGameplayEffectContextHandle UAuraAbilitySystemLibrary::ApplyDamageEffect(const 
 {
 	const FAuraGameplayTags& Tags=FAuraGameplayTags::Get();
 	const UAbilitySystemComponent* SourceASC=Params.SourceAbilitySystemComponent;
+	
 	FGameplayEffectContextHandle ContextHandle=SourceASC->MakeEffectContext();
 	ContextHandle.AddSourceObject(SourceASC->GetAvatarActor());
-
+	SetDeathImpulse(ContextHandle, Params.DeathImpulse);
+	SetKnockbackImpulse(ContextHandle, Params.KnockbackImpulse);
+	
 	const FGameplayEffectSpecHandle SpecHandle=SourceASC->MakeOutgoingSpec(
 		Params.DamageGameplayEffectClass,Params.AbilityLevel,ContextHandle);
 	
@@ -225,6 +228,24 @@ FGameplayTag UAuraAbilitySystemLibrary::GetDamageType(const FGameplayEffectConte
 	return FGameplayTag();
 }
 
+FVector UAuraAbilitySystemLibrary::GetDeathImpulse(const FGameplayEffectContextHandle& EffectContextHandle)
+{
+	if (const FAuraGameplayEffectContext* Context = static_cast<const FAuraGameplayEffectContext*>(EffectContextHandle.Get()))
+	{
+		return Context->GetDeathImpulse();
+	}
+	return FVector::ZeroVector;
+}
+
+FVector UAuraAbilitySystemLibrary::GetKnockbackImpulse(const FGameplayEffectContextHandle& EffectContextHandle)
+{
+	if (const FAuraGameplayEffectContext* Context = static_cast<const FAuraGameplayEffectContext*>(EffectContextHandle.Get()))
+	{
+		return Context->GetKnockbackImpulse();
+	}
+	return FVector::ZeroVector;
+}
+
 void UAuraAbilitySystemLibrary::SetIsBlockedHit(FGameplayEffectContextHandle& EffectContextHandle, const bool bInIsBlockedHit)
 {
 	if (FAuraGameplayEffectContext* Context = static_cast<FAuraGameplayEffectContext*>(EffectContextHandle.Get()))
@@ -279,6 +300,22 @@ void UAuraAbilitySystemLibrary::SetDamageType(FGameplayEffectContextHandle& Effe
 	{
 		const TSharedPtr<FGameplayTag> DamageType = MakeShared<FGameplayTag>(InDamageType);
 		Context->SetDamageType(DamageType);
+	}
+}
+
+void UAuraAbilitySystemLibrary::SetDeathImpulse(FGameplayEffectContextHandle& EffectContextHandle, const FVector& InDeathImpulse)
+{
+	if (FAuraGameplayEffectContext* Context = static_cast<FAuraGameplayEffectContext*>(EffectContextHandle.Get()))
+	{
+		Context->SetDeathImpulse(InDeathImpulse);
+	}
+}
+
+void UAuraAbilitySystemLibrary::SetKnockbackImpulse(FGameplayEffectContextHandle& EffectContextHandle, const FVector& InKnockbackImpulse)
+{
+	if (FAuraGameplayEffectContext* Context = static_cast<FAuraGameplayEffectContext*>(EffectContextHandle.Get()))
+	{
+		Context->SetKnockbackImpulse(InKnockbackImpulse);
 	}
 }
 
