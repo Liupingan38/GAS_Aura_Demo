@@ -175,4 +175,14 @@ void FAuraGameplayTags::InitializeNativeGameplayTags()
 		FName("Montage.Attack.3"), FString(TEXT("蒙太奇攻击动画 3")));
 	GameplayTags.Montage_Attack_4 = UGameplayTagsManager::Get().AddNativeGameplayTag(
 		FName("Montage.Attack.4"), FString(TEXT("蒙太奇攻击动画 4")));
+
+	//~ 玩家相关标签
+	GameplayTags.Player_Block_InputPressed = UGameplayTagsManager::Get().AddNativeGameplayTag(
+		FName("Player.Block.InputPressed"), FString(TEXT("禁止玩家输入 按下 的回调")));
+	GameplayTags.Player_Block_InputReleased = UGameplayTagsManager::Get().AddNativeGameplayTag(
+		FName("Player.Block.InputReleased"), FString(TEXT("禁止玩家输入 释放 的回调")));
+	GameplayTags.Player_Block_InputHeld = UGameplayTagsManager::Get().AddNativeGameplayTag(
+		FName("Player.Block.InputHeld"), FString(TEXT("禁止玩家输入 按住 的回调")));
+	GameplayTags.Player_Block_CursorTrace = UGameplayTagsManager::Get().AddNativeGameplayTag(
+		FName("Player.Block.CursorTrace"), FString(TEXT("禁止玩家鼠标追踪")));
 }

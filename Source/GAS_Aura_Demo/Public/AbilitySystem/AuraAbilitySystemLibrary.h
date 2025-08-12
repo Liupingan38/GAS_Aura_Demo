@@ -77,37 +77,50 @@ public:
 
 	UFUNCTION(BlueprintPure, Category="AuraAbilitySystemLibrary|GameplayEffects")
 	static FVector GetKnockbackImpulse(const FGameplayEffectContextHandle& EffectContextHandle);
-	
-	UFUNCTION(BlueprintCallable, Category="AuraAbilitySystemLibrary|GameplayEffects")
-	static void SetIsBlockedHit(UPARAM(ref)FGameplayEffectContextHandle& EffectContextHandle,const bool bInIsBlockedHit);
 
 	UFUNCTION(BlueprintCallable, Category="AuraAbilitySystemLibrary|GameplayEffects")
-	static void SetIsCriticalHit(UPARAM(ref)FGameplayEffectContextHandle& EffectContextHandle,const bool bInIsCriticalHit);
+	static void SetIsBlockedHit(UPARAM(ref)
+	                            FGameplayEffectContextHandle& EffectContextHandle, const bool bInIsBlockedHit);
+
+	UFUNCTION(BlueprintCallable, Category="AuraAbilitySystemLibrary|GameplayEffects")
+	static void SetIsCriticalHit(UPARAM(ref)
+	                             FGameplayEffectContextHandle& EffectContextHandle, const bool bInIsCriticalHit);
 
 	UFUNCTION(BlueprintPure, Category="AuraAbilitySystemLibrary|GameplayEffects")
-	static void SetIsSuccessfulDebuff(UPARAM(ref) FGameplayEffectContextHandle& EffectContextHandle,const bool bInDebuff);
+	static void SetIsSuccessfulDebuff(UPARAM(ref)
+	                                  FGameplayEffectContextHandle& EffectContextHandle, const bool bInDebuff);
 
 	UFUNCTION(BlueprintPure, Category="AuraAbilitySystemLibrary|GameplayEffects")
-	static void SetDebuffDamage(UPARAM(ref) FGameplayEffectContextHandle& EffectContextHandle,const float InDamage);
+	static void SetDebuffDamage(UPARAM(ref)
+	                            FGameplayEffectContextHandle& EffectContextHandle, const float InDamage);
 
 	UFUNCTION(BlueprintPure, Category="AuraAbilitySystemLibrary|GameplayEffects")
-	static void SetDebuffDuration(UPARAM(ref) FGameplayEffectContextHandle& EffectContextHandle,const float InDuration);
+	static void SetDebuffDuration(UPARAM(ref)
+	                              FGameplayEffectContextHandle& EffectContextHandle, const float InDuration);
 
 	UFUNCTION(BlueprintPure, Category="AuraAbilitySystemLibrary|GameplayEffects")
-	static void SetDebuffFrequency(UPARAM(ref) FGameplayEffectContextHandle& EffectContextHandle,const float InFrequency);
+	static void SetDebuffFrequency(UPARAM(ref)
+	                               FGameplayEffectContextHandle& EffectContextHandle, const float InFrequency);
 
 	UFUNCTION(BlueprintPure, Category="AuraAbilitySystemLibrary|GameplayEffects")
-	static void SetDamageType(UPARAM(ref) FGameplayEffectContextHandle& EffectContextHandle,const FGameplayTag& InDamageType);
+	static void SetDamageType(UPARAM(ref)
+	                          FGameplayEffectContextHandle& EffectContextHandle, const FGameplayTag& InDamageType);
 
 	UFUNCTION(BlueprintPure, Category="AuraAbilitySystemLibrary|GameplayEffects")
-	static void SetDeathImpulse(UPARAM(ref) FGameplayEffectContextHandle& EffectContextHandle,const FVector& InDeathImpulse);
+	static void SetDeathImpulse(UPARAM(ref)
+	                            FGameplayEffectContextHandle& EffectContextHandle, const FVector& InDeathImpulse);
 
 	UFUNCTION(BlueprintPure, Category="AuraAbilitySystemLibrary|GameplayEffects")
-	static void SetKnockbackImpulse(UPARAM(ref) FGameplayEffectContextHandle& EffectContextHandle,const FVector& InKnockbackImpulse);
+	static void SetKnockbackImpulse(UPARAM(ref)
+	                                FGameplayEffectContextHandle& EffectContextHandle, const FVector& InKnockbackImpulse);
 
 	UFUNCTION(BlueprintCallable, Category="AuraAbilitySystemLibrary|GameplayMechanics")
 	static void GetLivePlayerWithinRadius(const UObject* WorldContextObject, TArray<AActor*>& OutOverlappingActors,
 	                                      const TArray<AActor*>& ActorsToIgnore, float Radius, const FVector& SphereOrigin);
+
+	UFUNCTION(BlueprintCallable, Category="AuraAbilitySystemLibrary|GameplayMechanics")
+	static void GetClosestTargets(const FVector& Origin, int32 NumTargets, const TArray<AActor*>& Actors,
+	                              TArray<AActor*>& OutClosestTargets);
 
 	UFUNCTION(Blueprintpure, Category="AuraAbilitySystemLibrary|GameplayMechanics")
 	static bool IsNotFriend(AActor* FirstActor, AActor* SecondActor);
@@ -117,6 +130,12 @@ public:
 
 	UFUNCTION(BlueprintCallable, Category="AuraAbilitySystemLibrary|DamageEffect")
 	static FGameplayEffectContextHandle ApplyDamageEffect(const FDamageEffectParams& Params);
+
+	UFUNCTION(Blueprintpure, Category="AuraAbilitySystemLibrary|GameplayMechanics")
+	static TArray<FVector> EvenlySpreadVectors(const FVector& Forward, float SpreadAngle, int32 Nums,
+	                                           const FVector& Axis = FVector::UpVector);
+
+	UFUNCTION(Blueprintpure, Category="AuraAbilitySystemLibrary|GameplayMechanics")
+	static TArray<FRotator> EvenlySpreadRotators(const FVector& Forward, float SpreadAngle, int32 Nums,
+	                                             const FVector& Axis = FVector::UpVector);
 };
-
-

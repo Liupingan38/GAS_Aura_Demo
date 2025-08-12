@@ -5,7 +5,6 @@
 
 #include "AbilitySystemBlueprintLibrary.h"
 #include "AbilitySystemComponent.h"
-#include "AuraGameplayTags.h"
 #include "Actor/AuraProjectile.h"
 #include "Interaction/CombatInterface.h"
 
@@ -27,10 +26,7 @@ void UAuraProjectileSpell::SpawnProjectile(const FVector& ProjectileTargetLocati
 	const FVector SocketLocation = ICombatInterface::Execute_GetCombatSocketLocation(GetAvatarActorFromActorInfo(), SocketTag);
 	FRotator ProjectileRotation = (ProjectileTargetLocation - SocketLocation).Rotation();
 
-	if (bOverridePitch)
-	{
-		ProjectileRotation.Pitch = PitchOverride;
-	}
+	if (bOverridePitch) ProjectileRotation.Pitch = PitchOverride;
 
 	FTransform SpawnTransform;
 	SpawnTransform.SetLocation(SocketLocation);

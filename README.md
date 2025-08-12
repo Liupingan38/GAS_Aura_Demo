@@ -8354,12 +8354,617 @@ TSharedPtr<FMyStruct> Ptr = MakeShared<FMyStruct>(Arg1, Arg2);
 | 用途      | 已有裸指针时              | 新建对象时           |
 
 
-# DEBUG 11.通过接口实现获取敌人身上的委托时，使用&，否则可能出错（如死亡时OnDeath）
+# DEBUG 11.代理按值返回绑定失效，通过接口实现获取敌人身上的委托时，使用&，否则可能出错（如死亡时OnDeath）
+
+# 130.WeakPtr
+
+## 1. GAS 里 WeakPtr 常见使用场景
+
+* **避免循环引用**
+  例如 Ability 持有 TargetActor，TargetActor 又持有 Ability → 如果用 `TSharedPtr` 就会形成循环，导致对象不会析构。
+  这里用 `TWeakPtr` 可以防止内存泄漏。
+
+* **引用临时对象**
+  有些对象（比如 TargetData、AbilityTask、临时 UI 引用）生命周期不可控，用弱引用可以防止访问已销毁的对象。
+
+* **跨网络同步时避免强引用锁死对象**
+  有些对象只在本地存在，强引用可能会让它们在 GC 中一直存活。
+
+---
+
+## 2. WeakPtr 在 GAS 中的注意事项
+
+### **(1) 它可能随时失效**
+
+* 弱指针**不会延长对象生命周期**，所以必须每次使用前检查：
+
+  ```cpp
+  if (TSharedPtr<MyClass> Ptr = WeakPtr.Pin())
+  {
+      Ptr->DoSomething();
+  }
+  else
+  {
+      // 已失效，别用了
+  }
+  ```
+* 对于 `TWeakObjectPtr<UObject>`，用 `.IsValid()` 或 `.Get()` 检查：
+
+  ```cpp
+  if (WeakObjectPtr.IsValid())
+  {
+      WeakObjectPtr->DoSomething();
+  }
+  ```
+
+---
+
+### **(2) 不能直接跨网络传**
+
+* GAS 的 **Replicated Struct** 不会帮你复制 `TWeakPtr`/`TWeakObjectPtr`，因为弱引用是本地的内存地址。
+* 如果需要同步对象引用，要传 **FGameplayAbilityTargetDataHandle**、**FGameplayAbilitySpecHandle**、**FGameplayTag** 等 GAS 自带可序列化类型，然后在接收端重新查找。
+
+---
+
+### **(3) UE GC 相关**
+
+* 对于 UObject（`TWeakObjectPtr`）：如果对象被 GC 了，弱指针会自动失效（`IsValid()` 返回 false）。
+* 对于普通 C++ 对象（`TWeakPtr`）：如果 `TSharedPtr` 没有引用它了，它会被释放，弱指针失效。
+
+---
+
+### **(4) GAS 生命周期很短的对象要小心**
+
+* Ability Task、GameplayEffectSpec 这种对象生命周期短，WeakPtr 在下一帧就可能失效。
+* 常见坑：在 Ability 里用 WeakPtr 保存 TargetActor，但 TargetActor 在 Ability 结束时就被销毁，之后访问 WeakPtr 会是 null。
+
+---
+
+### **(5) 多线程 / 异步调用**
+
+* GAS 中有些异步回调（比如 Server/Client 的预测流）会延迟触发。
+* 如果 WeakPtr 在等待过程中失效，回调里用它会崩溃，所以一定要检查 `Pin()` 或 `IsValid()`。
+
+---
+
+## 3. 建议做法
+
+* **每次使用前都检查有效性**
+* 如果对象生命周期明确（比如一定会比 Ability 活得久），可以用 `TSharedPtr` 或裸指针
+* 跨网络不要传 WeakPtr
+* 对于 UObject，用 `TWeakObjectPtr` 而不是普通 WeakPtr，因为它和 UE 的 GC 系统整合得更好
+
+---
+
+✅ 总结一句话：
+
+> **GAS 中 WeakPtr 用来引用可能提前销毁的对象，每次用都要检查，不要跨网络直接传。**
+
+# 131.GAS自带的网络序列化Struct
+在 **GAS (Gameplay Ability System)** 里，确实有一批 **自带可序列化（可网络复制）** 的类型，专门用来在 **Server / Client / Prediction** 之间同步数据，这些类型和 `TWeakPtr` / 裸指针完全不同，因为它们支持：
+
+* **跨网络复制**（NetSerialize / FastArray）
+* **回放（Replay）**
+* **预测回滚（Prediction Rollback）**
+
+---
+
+## 1. 常见的 GAS 可序列化类型
+
+### **① FGameplayTag / FGameplayTagContainer**
+
+* 轻量的标签系统，可序列化、可网络传输。
+* 常用于：
+
+  * 技能触发条件
+  * Buff / Debuff 标记
+  * 动画状态标记
+* 示例：
+
+  ```cpp
+  UPROPERTY(BlueprintReadOnly, Replicated)
+  FGameplayTag CurrentState;
+  ```
+
+---
+
+### **② FGameplayAbilitySpecHandle**
+
+* 指向一个 **AbilitySpec**（激活能力实例）的句柄。
+* 不直接引用 UObject（所以可以安全跨网络）。
+* 服务器和客户端可以用相同的 Handle 找到各自本地的 AbilitySpec。
+* 示例：
+
+  ```cpp
+  FGameplayAbilitySpecHandle Handle = GiveAbility(FGameplayAbilitySpec(AbilityClass, Level));
+  ```
+
+---
+
+### **③ FGameplayEffectSpecHandle**
+
+* 指向一个 **GameplayEffectSpec**（效果实例）的句柄。
+* 在网络上传输时不直接传 Effect 对象，而是传递一个 ID，让接收方自己重建本地数据。
+* 常用于伤害计算、Buff 施加。
+* 示例：
+
+  ```cpp
+  FGameplayEffectSpecHandle SpecHandle = MakeOutgoingSpec(EffectClass, Level, Context);
+  ```
+
+---
+
+### **④ FGameplayAbilityTargetDataHandle**
+
+* 用来传输 **目标信息**（Actor、位置、碰撞结果等）。
+* 内部支持多种 `TargetData` 类型（`FGameplayAbilityTargetData_SingleTargetHit`、`_LocationInfo` 等）。
+* 具备序列化方法，可以跨网络同步。
+* 示例：
+
+  ```cpp
+  FGameplayAbilityTargetDataHandle TargetData;
+  TargetData.Add(new FGameplayAbilityTargetData_LocationInfo(LocationInfo));
+  ```
+
+---
+
+### **⑤ FGameplayEventData**
+
+* 用于触发 **Gameplay Event** 时的数据包。
+* 包含：
+
+  * EventTag
+  * Instigator / Target
+  * EventMagnitude
+  * OptionalObject 等
+* 可序列化，支持网络同步。
+* 示例：
+
+  ```cpp
+  FGameplayEventData Payload;
+  Payload.EventTag = MyEventTag;
+  Payload.Instigator = this;
+  ```
+
+---
+
+### **⑥ FActiveGameplayEffectHandle**
+
+* 指向已应用在 ASC 上的 **ActiveGameplayEffect** 实例的句柄。
+* 不直接传对象，支持跨网络引用。
+* 示例：
+
+  ```cpp
+  FActiveGameplayEffectHandle ActiveHandle = ASC->ApplyGameplayEffectSpecToSelf(Spec);
+  ```
+
+---
+
+## 2. 为什么不要用 WeakPtr / 裸指针跨网络？
+
+* WeakPtr / 裸指针 在网络上只是一个内存地址，客户端和服务器地址不一致，传过去毫无意义。
+* GAS 提供的这些 **句柄（Handle）+ Tag + DataHandle** 本质上是 **逻辑 ID**，两端用它们查找本地对象，实现同步。
+
+---
+
+## 3. 选用建议
+
+| 需求     | 用的 GAS 类型                                                   |
+| ------ | ----------------------------------------------------------- |
+| 同步技能实例 | `FGameplayAbilitySpecHandle`                                |
+| 同步效果实例 | `FGameplayEffectSpecHandle` / `FActiveGameplayEffectHandle` |
+| 同步目标数据 | `FGameplayAbilityTargetDataHandle`                          |
+| 同步标签   | `FGameplayTag` / `FGameplayTagContainer`                    |
+| 同步事件数据 | `FGameplayEventData`                                        |
+
+# 132.取消执行能力
+
+### 1. 整句的意思
+
+```cpp
+CancelAbility(CurrentSpecHandle, CurrentActorInfo, CurrentActivationInfo, true);
+```
+
+> **取消当前正在执行的这个能力实例**，并且在网络上同步这个取消操作（让服务器和其他客户端也知道该技能被中断/终止）。
+
+---
+
+### 2. 各个参数的含义
+
+* **`CurrentSpecHandle`**
+
+  * 当前能力的 **Spec 句柄**（`FGameplayAbilitySpecHandle`）。
+  * 每个已授予的能力在 ASC（AbilitySystemComponent）里都有唯一的句柄，用来标识它。
+  * 这里传的 `CurrentSpecHandle` 通常来自 `UGameplayAbility` 自身的成员变量，指向这个正在执行的技能实例。
+
+* **`CurrentActorInfo`**
+
+  * 指向一个 `FGameplayAbilityActorInfo` 结构体，存储执行这个能力时相关的关键对象（Owner Actor、Avatar Actor、Player Controller、ASC 等）。
+  * GAS 调用能力逻辑时会自动填好这个指针。
+
+* **`CurrentActivationInfo`**
+
+  * 指向 `FGameplayAbilityActivationInfo`，包含了本次能力激活的预测键、是否是本地预测、服务器确认状态等信息。
+  * 用于确保取消的是**这一次激活的实例**，不会误杀其他相同能力的并行实例。
+
+* **`true`（bReplicateCancelAbility）**
+
+  * 表示**取消操作要在网络上传播**（比如从客户端发给服务器，或者从服务器同步到其他客户端）。
+  * 如果设为 `false`，就只在本地执行取消逻辑，不会通知网络上的其他参与方。
+
+---
+
+### 3. 常见用法场景
+
+* **技能被打断**（比如角色硬直、死亡、被击退时）
+* **玩家松开蓄力键**（提前中止技能）
+* **条件失效**（比如 Buff 消失、资源不足）
+* **服务器强制中断**（比如冷却、全局事件）
+
+# 133.GameplayCue
+在 **GAS（Gameplay Ability System）** 里，**GameplayCue** 主要用来**表现游戏中的视觉、音效等表现层效果**，比如技能特效、命中音效、屏幕震动等。它本质上是\*\*“能力逻辑”与“表现效果”的解耦机制\*\*。
+
+---
+
+## 1）定义
+
+**GameplayCue** 是一种 GAS 框架内的事件系统，用来在客户端或服务端触发与 Gameplay 事件绑定的特效、音效或动画。
+
+* 由 **`UGameplayCueManager`** 统一管理。
+* 通过 **GameplayTag** 标识具体 Cue 类型（例如 `"GameplayCue.Fireball.Impact"`）。
+
+---
+
+## 2）使用场景
+
+1. **技能释放特效**
+
+   * 释放火球时播放施法光效和施法音效。
+2. **命中反馈**
+
+   * 火球击中敌人时触发爆炸特效、播放爆炸声。
+3. **状态变化表现**
+
+   * 角色进入“冰冻”状态时添加冰霜覆盖效果，状态解除时移除效果。
+4. **多端同步**
+
+   * Server 触发，Client 接收并播放对应表现（避免在能力逻辑中直接调用特效）。
+
+---
+
+## 3）注意事项
+
+1. **轻逻辑，重表现**
+
+   * GameplayCue **不负责游戏逻辑计算**（伤害、数值等在 Ability 或 Effect 中处理），只做表现层。
+2. **触发方式多样**
+
+   * 可以通过 `UAbilitySystemComponent::ExecuteGameplayCue`（瞬时执行）
+   * 或 `AddGameplayCue` / `RemoveGameplayCue`（持续效果）来触发。
+3. **客户端主导表现**
+
+   * 通常在客户端执行，避免网络延迟影响表现流畅度。
+4. **复用与模块化**
+
+   * 同一个 Cue 可以绑定到不同 Ability / Effect，只需复用对应的 GameplayTag。
+
+---
+
+💡 **简单理解**：
+
+* **GameplayAbility** → 管逻辑（技能的释放条件、冷却、消耗、命中检测等）
+* **GameplayEffect** → 管数值（加血、减速、伤害等）
+* **GameplayCue** → 管表现（特效、音效、动画、屏幕震动等）
+
+# 134.MaxRPCPerNetUpdateCVar 和 RPC数量
+`MaxRPCPerNetUpdateCVar` 是 **UE 网络层** 里的一个 **可调控制台变量（Console Variable, CVar）**，它用来**限制每次网络更新（NetUpdate）中，最多可以发送多少个 RPC（Remote Procedure Call）**。
+
+---
+
+## 1）定义
+
+* **类型**：`int32` 控制台变量
+* **位置**：在引擎的网络通信代码（`NetDriver` / `ActorChannel`）中注册
+* **作用**：防止某个 Actor 在一次网络更新周期中发送过多 RPC，造成带宽/延迟问题。
+
+---
+
+## 2）使用场景
+
+UE 的网络同步是按一定的 Tick 间隔（`NetUpdateFrequency`）执行的，每次会收集需要同步的属性、RPC 等并打包发送。
+
+* 如果某个角色的逻辑在一个 Tick 内发了大量 RPC（比如技能系统中大量 GameplayEvent / `Server_*` 调用），可能造成网络包暴增。
+* `MaxRPCPerNetUpdateCVar` 会做“硬上限”控制，一旦超过，就直接丢弃剩下的 RPC（并可能在日志中报错/警告）。
+
+---
+
+
+## 3）解决方案
+
+1. **减少同 Tick 内的 RPC 调用次数**
+
+   * 把多个事件合并成一个 RPC 数据包；
+   * 或者用 `GameplayEvent` 聚合后一次发送。
+2. **提高上限（调试用）**
+
+   * 控制台输入：
+
+     ```
+     net.MaxRPCPerNetUpdate 8
+     ```
+
+     或在 `DefaultEngine.ini`：
+
+     ```ini
+     [/Script/Engine.GameNetworkManager]
+     MaxRPCPerNetUpdate=8
+     ```
+
+     ⚠️ 提高上限会增加带宽占用，正式服要谨慎。
+3. **调整 `NetUpdateFrequency`**
+
+   * 提高频率，让同样数量的 RPC 分散到多个 NetUpdate 周期。
 
 
 
+## 4）GameplayCue 与 RPC
 
+* **GameplayCue 本质是一个事件广播**（`UAbilitySystemComponent` 发给本地或远端）。
+* 如果 Cue 需要在**网络另一端执行**（比如服务器告诉客户端“播放这个技能特效”），UE 就会用 RPC 把这个事件发过去。
+* GAS 里常见的这几个触发方式：
 
+  * `NetMulticast_InvokeGameplayCueAdded`
+  * `NetMulticast_InvokeGameplayCueExecuted`
+  * `NetMulticast_InvokeGameplayCueRemoved`
+    这些其实都是 **NetMulticast RPC**，广播到所有相关客户端。
+
+所以，如果你在 **Server** 调用 `ExecuteGameplayCue`，大概率会走一次 RPC 到客户端去执行 Cue 脚本（蓝图 / C++）。
+
+---
+
+## 5）什么时候不是单独的一个 RPC
+
+有几种情况不会对应到**一次独立的 RPC 调用**：
+
+1. **纯本地播放**
+
+   * 如果 GameplayCue 只在本地客户端执行（本地预测、UI效果等），不会走网络 RPC。
+2. **批量合并**
+
+   * 同一个 Actor 在同一个 NetUpdate 周期内多个 Cue 调用，有可能被合并到一个网络数据包里，但 RPC 调用次数还是按“事件”计。
+3. **预先同步状态**
+
+   * 如果 GameplayCue 是某个 GameplayEffect 的持续状态表现（`AddGameplayCue`），那么状态的添加/移除可能跟 Effect 的同步合并，不会单独发一个 RPC。
+
+---
+
+## 6）和 `MaxRPCPerNetUpdate` 的关系
+
+* 如果你在一个技能蒙太奇里放了很多 **AnimNotify → GameplayCue**，并且这些 Cue 是在 Server 触发然后广播给 Client，那么**每个 Cue 都可能是一条 RPC**。
+* 一旦单个 NetUpdate 周期里 Cue 过多，就可能撞上 `net.MaxRPCPerNetUpdate` 限制（默认 2\~4）。
+* 结果就是：后面的 Cue 被丢弃，客户端不播放那些特效。
+
+---
+
+## 7）简化理解
+
+* **GameplayCue（本地触发）** → 没有 RPC
+* **GameplayCue（Server 触发，需要远端播放）** → 通常是一条 RPC
+* **一次技能触发多个 GameplayCue** → 很可能就是多条 RPC
+* 如果频率太高 → 有风险被 `MaxRPCPerNetUpdate` 限制掉
+
+---
+## 8）建议
+我建议，如果你的技能里同一帧会触发多个 GameplayCue，可以考虑**合并成一个 GameplayCue，然后在 Cue 内部播放多个特效/音效**，这样只消耗一次 RPC，既省网络带宽，也能避免被 UE 的 RPC 限制卡掉。
+
+# 135.GameplayCueNotify\_Static VS GameplayCueNotify\_Actor
+这两个类都是 **GAS 里实现 GameplayCue 的两种方式**，区别主要在于它们是否**生成一个独立 Actor 实例**来承载效果，以及生命周期管理方式。
+
+---
+
+## 1）GameplayCueNotify\_Actor
+
+**继承自**：`AGameplayCueNotify_Actor`（是一个真正的 Actor）
+
+**特点**
+
+1. **会生成 Actor 实例**
+
+   * 当 GameplayCue 触发时，会在场景里生成一个临时的 Cue Actor（可以是特效容器、音效容器、逻辑宿主等）。
+2. **可以有 Tick、碰撞、物理等 Actor 功能**
+
+   * 适合需要持续存在、与场景交互的效果，比如持续旋转的护盾、落地生成的陷阱等。
+3. **生命周期由 GAS 控制**
+
+   * 当 Cue 移除时，这个 Actor 会被销毁。
+4. **更灵活，但开销更大**
+
+   * 因为要生成/销毁 Actor，占用更多内存和性能。
+
+**典型用法**
+
+* 持续的光环、护盾、地面陷阱、跟随玩家的特效物体
+* 有 Tick 或需要响应事件的特效
+
+---
+
+## 2）GameplayCueNotify\_Static
+
+**继承自**：`UGameplayCueNotify_Static`（只是一个 UObject，不会生成 Actor）
+
+**特点**
+
+1. **无 Actor 实例**
+
+   * 效果直接在调用时执行（Spawn Emitter、Play Sound、Camera Shake 等），然后结束。
+2. **轻量，瞬时触发**
+
+   * 没有 Tick，也不能参与物理或场景交互。
+3. **更适合一次性特效**
+
+   * 比如技能释放瞬间的火花、命中时的爆炸、播放一次音效等。
+
+**典型用法**
+
+* 瞬间的技能命中特效
+* 一次性音效
+* 摄像机抖动
+
+---
+
+## 3）选择建议
+
+| 特性         | GameplayCueNotify\_Actor | GameplayCueNotify\_Static |
+| ---------- | ------------------------ | ------------------------- |
+| 是否生成 Actor | ✅                        | ❌                         |
+| 持续时间       | 可以持续存在                   | 通常瞬时执行                    |
+| 是否有 Tick   | ✅                        | ❌                         |
+| 适合持续效果     | ✅                        | ❌                         |
+| 性能开销       | 较高                       | 较低                        |
+| 网络同步       | 可直接由 Actor 复制            | 由 Cue 系统触发一次              |
+
+---
+
+## 4）简单总结
+
+* **Static**：轻量、瞬时效果，类似“播放一次特效/音效”。
+* **Actor**：重量级、可持续、可交互，适合复杂的持续表现。
+
+# 136.`Event Construct` 和 `Construction Script`
+
+`Event Construct` 和 `Construction Script` 看名字很像，但其实**完全不是一个阶段的东西**，它们运行的时间、作用范围、用途都不一样。
+
+---
+
+## 1）概念来源
+
+* **Construction Script**
+
+  * **属于 Actor 蓝图（包括 Actor 派生类）**
+  * 用于**构造 Actor 外观和组件结构**
+  * 会在 **编辑器** 和 **运行时** 构造阶段执行
+
+* **Event Construct**
+
+  * **属于 Widget 蓝图（UMG）**
+  * 用于**Widget 创建完成时**的初始化逻辑
+  * 只在**运行时**（UI 创建后）执行，不会在编辑器预览时反复调用
+
+---
+
+## 2）执行时机对比
+
+| 特性       | Construction Script（Actor）     | Event Construct（Widget）    |
+| -------- | ------------------------------ | -------------------------- |
+| 运行对象     | Actor 蓝图                       | Widget 蓝图                  |
+| 调用时机     | Actor 构造（SpawnActor 或编辑器放置/修改） | Widget 创建完成（Create Widget） |
+| 是否在编辑器执行 | ✅ 是（实时更新外观）                    | ❌ 否                        |
+| 是否在运行时执行 | ✅ 是                            | ✅ 是                        |
+| 调用次数     | 多次（每次构造或属性变动）                  | 一次（Widget 创建时）             |
+
+---
+
+## 3）使用场景
+
+* **Construction Script**
+
+  * 在编辑器中实时生成/调整场景物体（Mesh、材质、灯光等）
+  * 在运行时根据初始参数生成 Actor 结构（比如生成多个子组件）
+
+* **Event Construct**
+
+  * 初始化 UI 数据（比如把玩家血量绑定到进度条）
+  * 绑定按钮点击事件、加载初始文本等
+
+---
+
+## 4）一句话记忆
+
+> * **Construction Script**：Actor 的“建造阶段逻辑”，在场景构造时执行。
+> * **Event Construct**：UI Widget 的“初始化事件”，在 UI 创建后执行一次。
+
+# 137.Algo
+好，那我帮你把 **Unreal Engine 的 Algo 命名空间常用函数**做个系统整理，方便你以后查。
+这些都是针对 UE 自己的容器（`TArray`、`TSet` 等）优化过的泛型算法。
+
+---
+
+## 📦 1. 排序与堆算法
+
+> 这些和 STL 类似，但可以直接用在 `TArray` 上。
+
+| 函数                 | 作用              | 例子                                                 |
+| ------------------ | --------------- | -------------------------------------------------- |
+| `Algo::Sort`       | 从小到大排序          | `Algo::Sort(Array);`                               |
+| `Algo::SortBy`     | 按成员变量或方法排序      | `Algo::SortBy(Actors, &AActor::GetActorLocation);` |
+| `Algo::StableSort` | 稳定排序（保持相等元素原顺序） | `Algo::StableSort(Array);`                         |
+| `Algo::Reverse`    | 反转容器            | `Algo::Reverse(Array);`                            |
+| `Algo::Shuffle`    | 随机打乱顺序          | `Algo::Shuffle(Array);`                            |
+| `Algo::Heapify`    | 将数组堆化           | `Algo::Heapify(Heap);`                             |
+| `Algo::PushHeap`   | 插入到堆中           | `Heap.Add(NewItem); Algo::PushHeap(Heap);`         |
+| `Algo::PopHeap`    | 弹出堆顶（并放到数组末尾）   | `Algo::PopHeap(Heap);`                             |
+| `Algo::IsHeap`     | 判断是否是堆          | `Algo::IsHeap(Heap);`                              |
+| `Algo::SortHeap`   | 堆排序（按优先级从小到大）   | `Algo::SortHeap(Heap);`                            |
+
+---
+
+## 🔍 2. 查找与判断
+
+> 找东西、判断条件、获取元素索引。
+
+| 函数                          | 作用        | 例子                                                                       |
+| --------------------------- | --------- | ------------------------------------------------------------------------ |
+| `Algo::Find`                | 查找等于某值的元素 | `auto* Ptr = Algo::Find(Array, 42);`                                     |
+| `Algo::FindBy`              | 按成员变量值查找  | `Algo::FindBy(Actors, &AActor::GetActorLabel, "Enemy");`                 |
+| `Algo::FindByPredicate`     | 按条件查找     | `Algo::FindByPredicate(Actors, [](AActor* A){ return A->IsHidden(); });` |
+| `Algo::FindLastByPredicate` | 从后往前找     | `Algo::FindLastByPredicate(Array, Pred);`                                |
+| `Algo::Contains`            | 是否包含某值    | `if (Algo::Contains(Array, Value)) ...`                                  |
+| `Algo::ContainsByPredicate` | 按条件判断是否包含 | `Algo::ContainsByPredicate(Array, Pred);`                                |
+| `Algo::IndexOf`             | 获取值所在索引   | `int32 Idx = Algo::IndexOf(Array, Value);`                               |
+| `Algo::IndexOfByPredicate`  | 条件查找索引    | `Algo::IndexOfByPredicate(Array, Pred);`                                 |
+
+---
+
+## 🔄 3. 转换与映射
+
+> 改变容器里的每个元素。
+
+| 函数                  | 作用        | 例子                                                                            |
+| ------------------- | --------- | ----------------------------------------------------------------------------- |
+| `Algo::Transform`   | 转换并保存到新容器 | `Algo::Transform(Ints, Strings, [](int32 V){ return FString::FromInt(V); });` |
+| `Algo::TransformIf` | 条件转换      | `Algo::TransformIf(Source, Dest, Pred, Func);`                                |
+| `Algo::ForEach`     | 对每个元素执行操作 | `Algo::ForEach(Array, [](auto& E){ E += 1; });`                               |
+| `Algo::Accumulate`  | 累加        | `int32 Sum = Algo::Accumulate(Array, 0);`                                     |
+
+---
+
+## 📊 4. 统计与判断
+
+> 数量统计、最大最小值等。
+
+| 函数                    | 作用        | 例子                                                    |
+| --------------------- | --------- | ----------------------------------------------------- |
+| `Algo::Count`         | 统计等于某值的个数 | `Algo::Count(Array, 10);`                             |
+| `Algo::CountIf`       | 条件统计      | `Algo::CountIf(Array, [](int32 V){ return V > 5; });` |
+| `Algo::AllOf`         | 所有元素满足条件  | `Algo::AllOf(Array, Pred);`                           |
+| `Algo::AnyOf`         | 至少一个满足条件  | `Algo::AnyOf(Array, Pred);`                           |
+| `Algo::NoneOf`        | 没有元素满足条件  | `Algo::NoneOf(Array, Pred);`                          |
+| `Algo::MinElement`    | 获取最小值迭代器  | `auto* Min = Algo::MinElement(Array);`                |
+| `Algo::MaxElement`    | 获取最大值迭代器  | `auto* Max = Algo::MaxElement(Array);`                |
+| `Algo::MinMaxElement` | 一次找最小和最大  | `Algo::MinMaxElement(Array, Min, Max);`               |
+
+---
+
+## 🧹 5. 过滤与删除
+
+> 按条件移除或保留。
+
+| 函数                     | 作用         | 例子                                                             |
+| ---------------------- | ---------- | -------------------------------------------------------------- |
+| `Algo::Remove`         | 移除等于某值的元素  | `Algo::Remove(Array, Value);`                                  |
+| `Algo::RemoveIf`       | 按条件移除      | `Algo::RemoveIf(Array, [](auto& E){ return E.Health <= 0; });` |
+| `Algo::StableRemoveIf` | 稳定移除（保持顺序） | `Algo::StableRemoveIf(Array, Pred);`                           |
+| `Algo::CopyIf`         | 复制符合条件的元素  | `Algo::CopyIf(Source, Dest, Pred);`                            |
 
 
 
@@ -8383,7 +8988,7 @@ TSharedPtr<FMyStruct> Ptr = MakeShared<FMyStruct>(Arg1, Arg2);
 
 ![](https://tuchuanglpa.oss-cn-beijing.aliyuncs.com/tuchuanglpa/20250707223944001.png)
 
-
+# Debug：客户端 释放 火球术呈现向上45，没有追踪效果，视觉上没打中，但敌人会被命中，播放命中动画并扣血，相关改动应该在追踪效果的实现上！！！！！！！！！！！！！
 
 
 

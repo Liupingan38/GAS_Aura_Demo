@@ -149,6 +149,46 @@ FGameplayEffectContextHandle UAuraAbilitySystemLibrary::ApplyDamageEffect(const 
 	return ContextHandle;
 }
 
+TArray<FVector> UAuraAbilitySystemLibrary::EvenlySpreadVectors(const FVector& Forward, float SpreadAngle, int32 Nums, const FVector& Axis)
+{
+	TArray<FVector> Result;
+	const FVector LeftDirection = Forward.RotateAngleAxis(-SpreadAngle / 2.f, Axis);
+	if (Nums > 1)
+	{
+		const float DeltaAngle = SpreadAngle / (Nums - 1);
+		for (int32 i = 0; i < Nums; i++)
+		{
+			FVector CurDirection = LeftDirection.RotateAngleAxis(DeltaAngle * i, Axis);
+			Result.Add(CurDirection);
+		}
+	}
+	else
+	{
+		Result.Add(Forward);
+	}
+	return Result;
+}
+
+TArray<FRotator> UAuraAbilitySystemLibrary::EvenlySpreadRotators(const FVector& Forward, float SpreadAngle, int32 Nums, const FVector& Axis)
+{
+	TArray<FRotator> Result;
+	const FVector LeftDirection = Forward.RotateAngleAxis(-SpreadAngle / 2.f, Axis);
+	if (Nums > 1)
+	{
+		const float DeltaAngle = SpreadAngle / (Nums - 1);
+		for (int32 i = 0; i < Nums; i++)
+		{
+			FVector CurDirection = LeftDirection.RotateAngleAxis(DeltaAngle * i, Axis);
+			Result.Add(CurDirection.Rotation());
+		}
+	}
+	else
+	{
+		Result.Add(Forward.Rotation());
+	}
+	return Result;
+}
+
 
 UCharacterClassInfo* UAuraAbilitySystemLibrary::GetCharacterClassInfo(const UObject* WorldContextObject)
 {
@@ -339,6 +379,55 @@ void UAuraAbilitySystemLibrary::GetLivePlayerWithinRadius(const UObject* WorldCo
 			}
 		}
 	}
+}
+
+void UAuraAbilitySystemLibrary::GetClosestTargets(const FVector& Origin, int32 NumTargets, const TArray<AActor*>& Actors,
+	TArray<AActor*>& OutClosestTargets)
+{
+	OutClosestTargets.Empty();
+	if (Actors.Num() <= NumTargets)
+	{
+		OutClosestTargets = Actors;
+		return;
+	}
+
+	struct FDistanceSquaredActor
+	{
+		float SquaredDistance;
+		AActor* Actor;
+
+		bool operator<(const FDistanceSquaredActor& Other) const
+		{
+			return SquaredDistance > Other.SquaredDistance;
+		}
+	};
+
+	TArray<FDistanceSquaredActor> Heap;
+	Heap.Reserve(NumTargets);
+	for (AActor* Actor : Actors)
+	{
+		if (!Actor) continue;
+		
+		const float CurDistanceSquared=FVector::DistSquared(Origin, Actor->GetActorLocation());
+		FDistanceSquaredActor CurActor={CurDistanceSquared, Actor};
+		if (Heap.Num() < NumTargets)
+		{
+			Heap.Add(CurActor);
+			if (Heap.Num() == NumTargets)
+			{
+				Algo::Heapify(Heap);
+			}
+		}else if (CurDistanceSquared<Heap[0].SquaredDistance)
+		{
+			Heap[0]=CurActor;
+			Algo::Heapify(Heap);
+		}
+	}
+	for (auto& [SquaredDistance, Actor] : Heap)
+	{
+		OutClosestTargets.Add(Actor);
+	}
+	
 }
 
 bool UAuraAbilitySystemLibrary::IsNotFriend(AActor* FirstActor, AActor* SecondActor)
