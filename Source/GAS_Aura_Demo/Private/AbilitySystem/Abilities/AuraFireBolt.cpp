@@ -15,7 +15,7 @@ FString UAuraFireBolt::GetDescription(int32 AbilityLevel)
 	const float Cooldown = GetCooldown(AbilityLevel);
 	return FString::Printf(TEXT(
 		//标题
-		"<Title>%s</>\n\n"
+		"<FireTitle>%s</>\n\n"
 		//等级
 		"<Small>当前等级：</><Level>%d</>\n"
 		//冷却时间
@@ -42,7 +42,7 @@ FString UAuraFireBolt::GetNextLevelDescription(int32 NextAbilityLevel)
 	const float Cooldown = GetCooldown(NextAbilityLevel);
 	return FString::Printf(TEXT(
 		//标题
-		"<Title>%s</>\n\n"
+		"<FireTitle>%s</>\n\n"
 		//等级
 		"<Small>当前等级：</><Level>%d</>\n"
 		//冷却时间

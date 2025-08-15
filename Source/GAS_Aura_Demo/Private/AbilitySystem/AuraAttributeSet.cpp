@@ -160,22 +160,24 @@ void UAuraAttributeSet::HandleIncomingDamage(const FEffectProperties& Props)
 		{
 			if (ICombatInterface* CombatInterface = Cast<ICombatInterface>(Props.TargetAvatarActor))
 			{
-				const FVector DeathImpulse=UAuraAbilitySystemLibrary::GetDeathImpulse(Props.EffectContextHandle);
+				const FVector DeathImpulse = UAuraAbilitySystemLibrary::GetDeathImpulse(Props.EffectContextHandle);
 				CombatInterface->Die(DeathImpulse);
 			}
 			SendXPEvent(Props);
-			
 		}
 		else //处理受击与击退
 		{
-			FGameplayTagContainer TagContainer;
-			TagContainer.AddTag(FAuraGameplayTags::Get().Effects_HitReact);
-			Props.TargetASC->TryActivateAbilitiesByTag(TagContainer);
+			if (Props.TargetCharacter->Implements<UCombatInterface>() && !ICombatInterface::Execute_IsBeingShocked(Props.TargetCharacter))
+			{
+				FGameplayTagContainer TagContainer;
+				TagContainer.AddTag(FAuraGameplayTags::Get().Effects_HitReact);
+				Props.TargetASC->TryActivateAbilitiesByTag(TagContainer);
+			}
 
-			const FVector& KnockbackImpulse=UAuraAbilitySystemLibrary::GetKnockbackImpulse(Props.EffectContextHandle);
+			const FVector& KnockbackImpulse = UAuraAbilitySystemLibrary::GetKnockbackImpulse(Props.EffectContextHandle);
 			if (!KnockbackImpulse.IsNearlyZero(1.f))
 			{
-				Props.TargetCharacter->LaunchCharacter(KnockbackImpulse,true,true);
+				Props.TargetCharacter->LaunchCharacter(KnockbackImpulse, true, true);
 			}
 		}
 		const bool bIsBlockedHit = UAuraAbilitySystemLibrary::IsBlockedHit(Props.EffectContextHandle);
@@ -215,7 +217,16 @@ void UAuraAttributeSet::Debuff(const FEffectProperties& Props)
 	Effect->Period = DebuffFrequency; // 周期（多少秒 tick 一次）
 
 	// 给 Effect 添加一个标记（比如 FireDebuffTag），方便识别效果类型
-	Effect->CachedGrantedTags.AddTag(Tags.DamageTypesToDebuffs[DamageType]);
+	const FGameplayTag& DebuffTag = Tags.DamageTypesToDebuffs[DamageType];
+	Effect->CachedGrantedTags.AddTag(DebuffTag);
+	//眩晕状态下禁止所有输入
+	if (DebuffTag == Tags.Debuff_Stun)
+	{
+		Effect->CachedGrantedTags.AddTag(Tags.Player_Block_CursorTrace);
+		Effect->CachedGrantedTags.AddTag(Tags.Player_Block_InputPressed);
+		Effect->CachedGrantedTags.AddTag(Tags.Player_Block_InputReleased);
+		Effect->CachedGrantedTags.AddTag(Tags.Player_Block_InputHeld);
+	}
 
 	// 设置堆叠规则：同一个来源的效果不会叠加，只刷新
 	Effect->StackingType = EGameplayEffectStackingType::AggregateBySource;
@@ -261,10 +272,16 @@ void UAuraAttributeSet::HandleIncomingXP(const FEffectProperties& Props)
 		const int32 LevelUpNum = NewLevel - CurrentLevel;
 		if (LevelUpNum > 0)
 		{
-			const int32 AttributePointReward = IPlayerInterface::Execute_GetAttributePointReward(Props.SourceCharacter, CurrentLevel);
-			const int32 SpellPointReward = IPlayerInterface::Execute_GetSpellPointReward(Props.SourceCharacter, CurrentLevel);
-
 			IPlayerInterface::Execute_AddToLevel(Props.SourceCharacter, LevelUpNum);
+			int32 AttributePointReward = 0;
+			int32 SpellPointReward = 0;
+
+			for (int32 i=0;i<LevelUpNum;i++)
+			{
+				AttributePointReward += IPlayerInterface::Execute_GetAttributePointReward(Props.SourceCharacter, CurrentLevel+i);
+				SpellPointReward += IPlayerInterface::Execute_GetSpellPointReward(Props.SourceCharacter, CurrentLevel+i);
+			}
+			
 			IPlayerInterface::Execute_AddToAttributePoint(Props.SourceCharacter, AttributePointReward);
 			IPlayerInterface::Execute_AddToSpellPoint(Props.SourceCharacter, SpellPointReward);
 

@@ -32,6 +32,8 @@ AAuraEnemy::AAuraEnemy()
 
 	HealthBar = CreateDefaultSubobject<UWidgetComponent>("HealthBar");
 	HealthBar->SetupAttachment(GetRootComponent());
+
+	BaseWalkSpeed=250.f;
 }
 
 void AAuraEnemy::PossessedBy(AController* NewController)
@@ -43,7 +45,7 @@ void AAuraEnemy::PossessedBy(AController* NewController)
 	AuraAIController->GetBlackboardComponent()->InitializeBlackboard(*BehaviorTree->BlackboardAsset);
 	AuraAIController->RunBehaviorTree(BehaviorTree);
 	AuraAIController->GetBlackboardComponent()->SetValueAsBool(FName("HitReacting"), false);
-	AuraAIController->GetBlackboardComponent()->SetValueAsBool(FName("RangedEnemy"),CharacterClass != ECharacterClass::Warrior);
+	AuraAIController->GetBlackboardComponent()->SetValueAsBool(FName("RangedEnemy"), CharacterClass != ECharacterClass::Warrior);
 }
 
 void AAuraEnemy::Highlight()
@@ -78,8 +80,9 @@ int32 AAuraEnemy::GetCombatCharacterLevel_Implementation()
 void AAuraEnemy::Die(const FVector& DeathImpulse)
 {
 	SetLifeSpan(LifeSpan);
-	if (AuraAIController){
-		AuraAIController->GetBlackboardComponent()->SetValueAsBool(FName("Dead"),true);
+	if (AuraAIController)
+	{
+		AuraAIController->GetBlackboardComponent()->SetValueAsBool(FName("Dead"), true);
 	}
 	Super::Die(DeathImpulse);
 }
@@ -116,8 +119,8 @@ void AAuraEnemy::BeginPlay()
 				OnMaxHealthChanged.Broadcast(AuraAS->GetMaxHealth());
 			}
 		);
-		AbilitySystemComponent->RegisterGameplayTagEvent(FAuraGameplayTags::Get().Effects_HitReact, EGameplayTagEventType::NewOrRemoved).AddUObject(
-			this, &AAuraEnemy::HitReactTagChanged);
+		AbilitySystemComponent->RegisterGameplayTagEvent(FAuraGameplayTags::Get().Effects_HitReact, EGameplayTagEventType::NewOrRemoved).
+		                        AddUObject(this, &AAuraEnemy::HitReactTagChanged);
 
 		//广播初始值
 		OnHealthChanged.Broadcast(AuraAS->GetHealth());
@@ -127,7 +130,6 @@ void AAuraEnemy::BeginPlay()
 
 void AAuraEnemy::HitReactTagChanged(const FGameplayTag CallbackTag, int32 NewCount)
 {
-	
 	bHitReacting = NewCount > 0;
 	GetCharacterMovement()->MaxWalkSpeed = bHitReacting ? 0.f : BaseWalkSpeed;
 
@@ -135,13 +137,14 @@ void AAuraEnemy::HitReactTagChanged(const FGameplayTag CallbackTag, int32 NewCou
 	{
 		AuraAIController->GetBlackboardComponent()->SetValueAsBool(FName("HitReacting"), bHitReacting);
 	}
-	
 }
 
 void AAuraEnemy::InitAbilityActorInfo()
 {
 	AbilitySystemComponent->InitAbilityActorInfo(this, this);
 	Cast<UAuraAbilitySystemComponent>(AbilitySystemComponent)->AbilityActorInfoSet();
+	AbilitySystemComponent->RegisterGameplayTagEvent(FAuraGameplayTags::Get().Debuff_Stun, EGameplayTagEventType::NewOrRemoved).AddUObject(
+		this, &AAuraEnemy::StunTagChanged);
 
 	if (HasAuthority())
 	{
@@ -153,4 +156,13 @@ void AAuraEnemy::InitAbilityActorInfo()
 void AAuraEnemy::InitializeDefaultAttributes() const
 {
 	UAuraAbilitySystemLibrary::InitializeDefaultAttributes(this, CharacterClass, Level, AbilitySystemComponent);
+}
+
+void AAuraEnemy::StunTagChanged(const FGameplayTag CallbackTag, int32 NewCount)
+{
+	Super::StunTagChanged(CallbackTag, NewCount);
+	if (AuraAIController && AuraAIController->GetBlackboardComponent())
+	{
+		AuraAIController->GetBlackboardComponent()->SetValueAsBool(FName("Stunned"), bIsStunned);
+	}
 }

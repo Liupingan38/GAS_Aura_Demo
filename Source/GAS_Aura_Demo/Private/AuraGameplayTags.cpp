@@ -152,9 +152,16 @@ void FAuraGameplayTags::InitializeNativeGameplayTags()
 	//~ 技能冷却
 	GameplayTags.Cooldown_Fire_FireBolt = UGameplayTagsManager::Get().AddNativeGameplayTag(
 	FName("Cooldown.Fire.FireBolt"), FString(TEXT("火球术 技能冷却")));
-
 	GameplayTags.Cooldown_Lighting_Electrocute = UGameplayTagsManager::Get().AddNativeGameplayTag(
 	FName("Cooldown.Lighting.Electrocute"), FString(TEXT("电击术 技能冷却")));
+
+	//~ 被动技能
+	GameplayTags.Abilities_Passive_HaloOfProtection = UGameplayTagsManager::Get().AddNativeGameplayTag(
+	FName("Abilities.Passive.HaloOfProtection"), FString(TEXT("保护光环被动")));
+	GameplayTags.Abilities_Passive_HealthSiphon = UGameplayTagsManager::Get().AddNativeGameplayTag(
+	FName("Abilities.Passive.HealthSiphon"), FString(TEXT("生命汲取被动")));
+	GameplayTags.Abilities_Passive_ManaSiphon = UGameplayTagsManager::Get().AddNativeGameplayTag(
+	FName("Abilities.Passive.ManaSiphon"), FString(TEXT("法力汲取被动")));
 	
 	//~ 战斗插槽 
 	GameplayTags.CombatSocket_Weapon = UGameplayTagsManager::Get().AddNativeGameplayTag(

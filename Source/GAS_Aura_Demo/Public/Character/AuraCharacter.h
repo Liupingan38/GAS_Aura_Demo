@@ -7,6 +7,7 @@
 #include "Interaction/PlayerInterface.h"
 #include "AuraCharacter.generated.h"
 
+
 class USpringArmComponent;
 class UCameraComponent;
 class UNiagaraComponent;
@@ -22,7 +23,8 @@ public:
 	AAuraCharacter();
 	virtual void PossessedBy(AController* NewController) override;
 	virtual void OnRep_PlayerState() override;
-
+	virtual void OnRep_Stunned() override;
+	virtual void OnRep_Burned() override;
 	//~ Begin Player Interface
 	virtual void AddToXP_Implementation(int32 InXP) override;
 	virtual void AddToLevel_Implementation(int32 InLevel) override;
@@ -54,4 +56,6 @@ private:
 
 	UFUNCTION(NetMulticast,Reliable)
 	void MulticastLevelUpParticles() const;
+	
+	
 };

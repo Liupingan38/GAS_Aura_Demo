@@ -81,9 +81,14 @@ public:
 	FGameplayTag Abilities_HitReact;
 	FGameplayTag Abilities_Attack;
 	FGameplayTag Abilities_Summon;
+
+	FGameplayTag Abilities_Passive_HaloOfProtection;
+	FGameplayTag Abilities_Passive_HealthSiphon;
+	FGameplayTag Abilities_Passive_ManaSiphon;
 	
 	FGameplayTag Abilities_Fire_FireBolt;
 	FGameplayTag Abilities_Lighting_Electrocute;
+	
 	//技能冷却标签
 	FGameplayTag Cooldown_Fire_FireBolt;
 	FGameplayTag Cooldown_Lighting_Electrocute;

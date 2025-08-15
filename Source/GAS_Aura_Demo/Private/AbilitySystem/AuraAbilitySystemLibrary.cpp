@@ -384,6 +384,8 @@ void UAuraAbilitySystemLibrary::GetLivePlayerWithinRadius(const UObject* WorldCo
 void UAuraAbilitySystemLibrary::GetClosestTargets(const FVector& Origin, int32 NumTargets, const TArray<AActor*>& Actors,
 	TArray<AActor*>& OutClosestTargets)
 {
+	if (NumTargets < 1)	return;
+	
 	OutClosestTargets.Empty();
 	if (Actors.Num() <= NumTargets)
 	{

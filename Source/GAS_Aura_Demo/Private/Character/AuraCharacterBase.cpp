@@ -6,9 +6,12 @@
 #include "AuraGameplayTags.h"
 #include "AbilitySystem/AuraAbilitySystemComponent.h"
 #include "AbilitySystem/Debuff/DebuffNiagaraComponent.h"
+#include "AbilitySystem/Passive/PassiveNiagaraComponent.h"
 #include "Components/CapsuleComponent.h"
+#include "GameFramework/CharacterMovementComponent.h"
 #include "GAS_Aura_Demo/GAS_Aura_Demo.h"
 #include "Kismet/GameplayStatics.h"
+#include "Net/UnrealNetwork.h"
 
 
 //class UAuraAbilitySystemComponent;
@@ -16,12 +19,16 @@
 
 AAuraCharacterBase::AAuraCharacterBase()
 {
-	PrimaryActorTick.bCanEverTick = false;
+	PrimaryActorTick.bCanEverTick = true;
 
-	BurnDebuffComponent=CreateDefaultSubobject<UDebuffNiagaraComponent>("BurnDebuffComponent");
+	BurnDebuffComponent = CreateDefaultSubobject<UDebuffNiagaraComponent>("BurnDebuffComponent");
 	BurnDebuffComponent->SetupAttachment(GetRootComponent());
-	BurnDebuffComponent->DebuffTag=FAuraGameplayTags::Get().Debuff_Burn;
-	
+	BurnDebuffComponent->DebuffTag = FAuraGameplayTags::Get().Debuff_Burn;
+
+	StunDebuffComponent = CreateDefaultSubobject<UDebuffNiagaraComponent>("StunDebuffComponent");
+	StunDebuffComponent->SetupAttachment(GetRootComponent());
+	StunDebuffComponent->DebuffTag = FAuraGameplayTags::Get().Debuff_Stun;
+
 	GetCapsuleComponent()->SetCollisionResponseToChannel(ECC_Camera, ECR_Ignore);
 	GetCapsuleComponent()->SetGenerateOverlapEvents(false);
 
@@ -33,6 +40,21 @@ AAuraCharacterBase::AAuraCharacterBase()
 	Weapon->SetupAttachment(GetMesh(), FName("WeaponHandSocket"));
 	Weapon->SetCollisionEnabled(ECollisionEnabled::Type::NoCollision);
 	Weapon->SetCollisionResponseToChannel(ECC_Camera, ECR_Ignore);
+
+	EffectAttachComponent=CreateDefaultSubobject<USceneComponent>("EffectAttachComponent");
+	EffectAttachComponent->SetupAttachment(GetRootComponent());
+	HaloOfProtectionNiagaraComponent=CreateDefaultSubobject<UPassiveNiagaraComponent>("HaloOfProtectionNiagaraComponent");
+	HaloOfProtectionNiagaraComponent->SetupAttachment(EffectAttachComponent);
+	HealthSiphonNiagaraComponent=CreateDefaultSubobject<UPassiveNiagaraComponent>("HealthSiphonNiagaraComponent");
+	HealthSiphonNiagaraComponent->SetupAttachment(EffectAttachComponent);
+	ManaSiphonNiagaraComponent=CreateDefaultSubobject<UPassiveNiagaraComponent>("ManaSiphonNiagaraComponent");
+	ManaSiphonNiagaraComponent->SetupAttachment(EffectAttachComponent);
+}
+
+void AAuraCharacterBase::Tick(float DeltaTime)
+{
+	Super::Tick(DeltaTime);
+	EffectAttachComponent->SetWorldRotation(FRotator::ZeroRotator);
 }
 
 UAbilitySystemComponent* AAuraCharacterBase::GetAbilitySystemComponent() const
@@ -56,24 +78,50 @@ void AAuraCharacterBase::Die(const FVector& DeathImpulse)
 //服务器和客户端都调用
 void AAuraCharacterBase::MulticastHandleDeath_Implementation(const FVector& DeathImpulse)
 {
-	UGameplayStatics::PlaySoundAtLocation(this,DeathSound,GetActorLocation());
+	UGameplayStatics::PlaySoundAtLocation(this, DeathSound, GetActorLocation());
 	Weapon->SetSimulatePhysics(true);
 	Weapon->SetEnableGravity(true);
 	Weapon->SetCollisionEnabled(ECollisionEnabled::Type::PhysicsOnly);
-	float WeaponImpulseScale=0.1f;
-	Weapon->AddImpulse(DeathImpulse*WeaponImpulseScale,NAME_None,true);
-	
+	float WeaponImpulseScale = 0.1f;
+	Weapon->AddImpulse(DeathImpulse * WeaponImpulseScale, NAME_None, true);
+
 	GetMesh()->SetSimulatePhysics(true);
 	GetMesh()->SetEnableGravity(true);
 	GetMesh()->SetCollisionEnabled(ECollisionEnabled::Type::PhysicsOnly);
 	GetMesh()->SetCollisionResponseToChannel(ECC_WorldStatic, ECR_Block);
-	GetMesh()->AddImpulse(DeathImpulse,NAME_None,true);
-	
+	GetMesh()->AddImpulse(DeathImpulse, NAME_None, true);
+
 	GetCapsuleComponent()->SetCollisionEnabled(ECollisionEnabled::Type::NoCollision);
 	Dissolve();
 	bDead = true;
+	BurnDebuffComponent->Deactivate();
+	StunDebuffComponent->Deactivate();
 	OnDeath.Broadcast(this);
 }
+
+void AAuraCharacterBase::StunTagChanged(const FGameplayTag CallbackTag, int32 NewCount)
+{
+	bIsStunned = NewCount > 0;
+	GetCharacterMovement()->MaxWalkSpeed = bIsStunned ? 0 : BaseWalkSpeed;
+}
+
+void AAuraCharacterBase::GetLifetimeReplicatedProps(TArray<class FLifetimeProperty>& OutLifetimeProps) const
+{
+	Super::GetLifetimeReplicatedProps(OutLifetimeProps);
+	DOREPLIFETIME(AAuraCharacterBase,bIsStunned);
+	DOREPLIFETIME(AAuraCharacterBase,bIsBurned);
+	DOREPLIFETIME(AAuraCharacterBase,bIsBeingShocked);
+}
+
+void AAuraCharacterBase::OnRep_Stunned()
+{
+}
+
+void AAuraCharacterBase::OnRep_Burned()
+{
+}
+
+
 
 void AAuraCharacterBase::BeginPlay()
 {
@@ -87,7 +135,7 @@ FVector AAuraCharacterBase::GetCombatSocketLocation_Implementation(const FGamepl
 	{
 		return Weapon->GetSocketLocation(WeaponTipSocketName);
 	}
-	if (SocketTag == GameplayTags.CombatSocket_LeftHand )
+	if (SocketTag == GameplayTags.CombatSocket_LeftHand)
 	{
 		return GetMesh()->GetSocketLocation(LeftHandSocketName);
 	}
@@ -124,7 +172,7 @@ UNiagaraSystem* AAuraCharacterBase::GetBloodEffect_Implementation()
 
 FTaggedMontage AAuraCharacterBase::GetTaggedMontageByTag_Implementation(const FGameplayTag& MontageTag)
 {
-	for (const FTaggedMontage& TaggedMontage:AttackMontages)
+	for (const FTaggedMontage& TaggedMontage : AttackMontages)
 	{
 		if (TaggedMontage.MontageTag.MatchesTagExact(MontageTag)) return TaggedMontage;
 	}
@@ -159,6 +207,16 @@ FOnDeath& AAuraCharacterBase::GetOnDeathDelegate()
 USkeletalMeshComponent* AAuraCharacterBase::GetWeapon_Implementation()
 {
 	return Weapon;
+}
+
+bool AAuraCharacterBase::IsBeingShocked_Implementation() const
+{
+	return bIsBeingShocked;
+}
+
+void AAuraCharacterBase::SetIsBeingShocked_Implementation(bool bShocked)
+{
+	bIsBeingShocked = bShocked;
 }
 
 

@@ -15,6 +15,9 @@ class GAS_AURA_DEMO_API UAuraBeamSpell : public UAuraDamageGameplayAbility
 	GENERATED_BODY()
 
 public:
+	virtual FString GetDescription(int32 AbilityLevel) override;
+	virtual FString GetNextLevelDescription(int32 NextAbilityLevel) override;
+	
 	UFUNCTION(BlueprintCallable)
 	void StoreMouseHitDataInfo(const FHitResult& HitResult);
 

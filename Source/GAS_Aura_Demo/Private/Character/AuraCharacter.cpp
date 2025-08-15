@@ -4,9 +4,11 @@
 #include "Character/AuraCharacter.h"
 
 #include "AbilitySystemComponent.h"
+#include "AuraGameplayTags.h"
 #include "NiagaraComponent.h"
 #include "AbilitySystem/AuraAbilitySystemComponent.h"
 #include "AbilitySystem/Data/LevelUpInfo.h"
+#include "AbilitySystem/Debuff/DebuffNiagaraComponent.h"
 #include "Camera/CameraComponent.h"
 #include "GameFramework/CharacterMovementComponent.h"
 #include "GameFramework/SpringArmComponent.h"
@@ -63,6 +65,41 @@ void AAuraCharacter::OnRep_PlayerState()
 	InitAbilityActorInfo();
 }
 
+void AAuraCharacter::OnRep_Stunned()
+{
+	if (UAuraAbilitySystemComponent* AuraASC = Cast<UAuraAbilitySystemComponent>(AbilitySystemComponent))
+	{
+		const FAuraGameplayTags& GameplayTags = FAuraGameplayTags::Get();
+		FGameplayTagContainer BlockInputTags;
+		BlockInputTags.AddTag(GameplayTags.Player_Block_CursorTrace);
+		BlockInputTags.AddTag(GameplayTags.Player_Block_InputPressed);
+		BlockInputTags.AddTag(GameplayTags.Player_Block_InputReleased);
+		BlockInputTags.AddTag(GameplayTags.Player_Block_InputHeld);
+		if (bIsStunned)
+		{
+			AuraASC->AddLooseGameplayTags(BlockInputTags);
+			StunDebuffComponent->Activate();
+		}
+		else
+		{
+			AuraASC->RemoveLooseGameplayTags(BlockInputTags);
+			StunDebuffComponent->Deactivate();
+		}
+	}
+}
+
+void AAuraCharacter::OnRep_Burned()
+{
+	if (bIsBurned)
+	{
+		BurnDebuffComponent->Activate();
+	}
+	else
+	{
+		BurnDebuffComponent->Deactivate();
+	}
+}
+
 void AAuraCharacter::AddToXP_Implementation(int32 InXP)
 {
 	AAuraPlayerState* AuraPlayerState = GetPlayerState<AAuraPlayerState>();
@@ -75,7 +112,7 @@ void AAuraCharacter::AddToLevel_Implementation(int32 InLevel)
 	AAuraPlayerState* AuraPlayerState = GetPlayerState<AAuraPlayerState>();
 	check(AuraPlayerState);
 	AuraPlayerState->AddToLevel(InLevel);
-	if (UAuraAbilitySystemComponent* AuraAbilitySystemComponent=Cast<UAuraAbilitySystemComponent>(GetAbilitySystemComponent()))
+	if (UAuraAbilitySystemComponent* AuraAbilitySystemComponent = Cast<UAuraAbilitySystemComponent>(GetAbilitySystemComponent()))
 	{
 		AuraAbilitySystemComponent->UpdateAbilityStatus(AuraPlayerState->GetPlayerLevel());
 	}
@@ -104,9 +141,9 @@ void AAuraCharacter::MulticastLevelUpParticles_Implementation() const
 {
 	if (IsValid(LevelUpNiagaraComponent))
 	{
-		FVector CameraLocation=TopDownCameraComponent->GetComponentLocation();
-		FVector NiagaraLocation=LevelUpNiagaraComponent->GetComponentLocation();
-		FRotator NiagaraToCameraRotation=(CameraLocation-NiagaraLocation).Rotation();
+		FVector CameraLocation = TopDownCameraComponent->GetComponentLocation();
+		FVector NiagaraLocation = LevelUpNiagaraComponent->GetComponentLocation();
+		FRotator NiagaraToCameraRotation = (CameraLocation - NiagaraLocation).Rotation();
 		LevelUpNiagaraComponent->SetWorldRotation(NiagaraToCameraRotation);
 		LevelUpNiagaraComponent->Activate(true);
 	}
@@ -172,7 +209,8 @@ void AAuraCharacter::InitAbilityActorInfo()
 	Cast<UAuraAbilitySystemComponent>(AbilitySystemComponent)->AbilityActorInfoSet();
 
 	OnASCRegistered.Broadcast(AbilitySystemComponent);
-	
+	AbilitySystemComponent->RegisterGameplayTagEvent(FAuraGameplayTags::Get().Debuff_Stun, EGameplayTagEventType::NewOrRemoved).AddUObject(
+		this, &AAuraCharacter::StunTagChanged);
 	if (AAuraPlayerController* AuraPlayerController = Cast<AAuraPlayerController>(GetController()))
 	{
 		if (AAuraHUD* AuraHUD = Cast<AAuraHUD>(AuraPlayerController->GetHUD()))

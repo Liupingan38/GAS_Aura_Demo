@@ -8966,7 +8966,137 @@ UE 的网络同步是按一定的 Tick 间隔（`NetUpdateFrequency`）执行的
 | `Algo::StableRemoveIf` | 稳定移除（保持顺序） | `Algo::StableRemoveIf(Array, Pred);`                           |
 | `Algo::CopyIf`         | 复制符合条件的元素  | `Algo::CopyIf(Source, Dest, Pred);`                            |
 
+# 138.Replication VS RepNotify
 
+## 1）Replication（变量复制）
+
+**Replication** 是 Unreal Engine 的基础网络功能，让**变量的值**从**服务器**自动同步到**客户端**。
+
+* **关键点**：只是把数据传过去，没附加逻辑。
+* 开启方法：在变量属性里勾选 **Replicate**（C++ 里加 `UPROPERTY(Replicated)`）。
+* 触发时机：当服务器变量值变化时（根据 `NetUpdateFrequency` 等规则）发送到客户端。
+* 没有通知函数：客户端收到新值时，不会自动执行额外逻辑，除非你手动去检查。
+
+例子：
+
+```cpp
+UPROPERTY(Replicated)
+float Health;
+```
+
+当服务器改 `Health` 时，客户端会自动更新，但不会触发额外事件。
+
+---
+
+## 2）RepNotify（带通知的复制）
+
+**RepNotify** 是 **Replication + 自动回调** 的组合。
+
+* **关键点**：不仅同步数据，还会在客户端收到新值时调用一个你定义的函数。
+* 开启方法：变量的 Replication Type 选 **RepNotify**，然后实现 `OnRep_变量名()` 回调函数。
+* 触发时机：当服务器更改变量并同步到客户端时，客户端会执行这个回调，可以在里面做额外处理（更新 UI、播放动画等）。
+
+例子：
+
+```cpp
+UPROPERTY(ReplicatedUsing=OnRep_Health)
+float Health;
+
+UFUNCTION()
+void OnRep_Health()
+{
+    UpdateHealthBar(Health);
+}
+```
+
+这样当服务器更新 `Health` 时，客户端不仅收到新值，还会自动更新血条。
+
+---
+
+## 3）对比总结
+
+| 特性   | Replication | RepNotify         |
+| ---- | ----------- | ----------------- |
+| 数据同步 | ✅           | ✅                 |
+| 自动回调 | ❌           | ✅                 |
+| 用途   | 单纯同步数据      | 同步数据并触发逻辑（UI、特效等） |
+| 性能   | 稍低消耗        | 多一次函数调用（差别很小）     |
+
+---
+
+💡 **简单记忆**：
+
+* **Replication**：像快递，只送东西。
+* **RepNotify**：像快递+电话，送到还会打电话通知你“东西到了”。
+
+# 139.`CachedGrantedTags`VS`CachedAssetTags`VS`CachedBlockedAbilityTags`
+
+## 1）`CachedGrantedTags`
+
+**定义**
+
+* 这是当前 **Ability** 本身 **被授予（Granted）时**，所自动添加到 `AbilitySystemComponent` 的 **Gameplay Tags** 集合。
+* 它来自 `UGameplayAbility::AbilityTags` 中配置的标签，以及激活时动态添加的标签。
+
+**使用场景**
+
+* 用于标识「拥有该技能的角色」自动具备哪些标签。
+* 在技能激活、检测条件时，可以通过这些标签来判断角色是否满足前置条件。
+* 比如某个技能授予角色 `"State.Berserk"`，其他系统可通过检测该标签来触发特殊逻辑。
+
+**注意事项**
+
+* 它通常在 **技能被授予时** 缓存一次，并在技能移除时撤销。
+* 属于「角色拥有技能的全局标识」，而不是一次性技能实例标签。
+
+---
+
+## 2）`CachedAssetTags`
+
+**定义**
+
+* 这是与 **Ability 资源本身** 绑定的标签，来自 `UGameplayAbility::AbilityTags` **以及 Ability 蓝图的 `AssetTags`**（Asset Metadata）。
+* 它描述的是技能“内容/类型”信息，而不是状态标签。
+
+**使用场景**
+
+* 用于描述技能分类、特性、效果来源。
+* 例如：`"Skill.Offensive.Melee"`、`"Damage.Fire"`，方便做技能筛选、日志、UI展示。
+* 在能力搜索（`FindAbilitySpecFromClass` 等）中，`AssetTags` 方便用来快速过滤技能类型。
+
+**注意事项**
+
+* 它是描述性的标签，不一定会影响技能能否被激活。
+* 通常在设计阶段就已经固定，不随运行时改变。
+
+---
+
+## 3）`CachedBlockedAbilityTags`
+
+**定义**
+
+* 这是当前 Ability 会 **阻止其他能力激活** 的标签集合，来自 `UGameplayAbility::BlockAbilitiesWithTag`。
+* 当该 Ability 激活时，拥有这些标签的能力会被阻止启动。
+
+**使用场景**
+
+* 防止技能冲突或逻辑冲突，比如“蓄力攻击”阻止“闪避”激活，或“大招”阻止“换武器”。
+* 在 `AbilitySystemComponent::CanActivateAbility` 里会检查，如果激活目标技能的标签命中阻止表，则返回 false。
+
+**注意事项**
+
+* 是运行时判断能否激活能力的重要条件之一。
+* 这是单向阻止，如果需要双向阻止，要在两个技能里都配置对应的 Block 标签。
+
+---
+
+### 总结对比表
+
+| 变量名                        | 含义             | 来源                      | 主要作用      | 动态变化性            |
+| -------------------------- | -------------- | ----------------------- | --------- | ---------------- |
+| `CachedGrantedTags`        | 技能授予角色时附加的标签   | AbilityTags（技能本身）+运行时授予 | 标识角色状态/能力 | 可能运行时变化（授予/移除技能） |
+| `CachedAssetTags`          | 技能资源的描述标签      | AssetTags（编辑器中配置）       | 技能分类、效果描述 | 基本静态             |
+| `CachedBlockedAbilityTags` | 当前技能激活时阻止的能力标签 | BlockAbilitiesWithTag   | 阻止冲突技能激活  | 静态配置，运行时检查       |
 
 
 
@@ -8988,7 +9118,8 @@ UE 的网络同步是按一定的 Tick 间隔（`NetUpdateFrequency`）执行的
 
 ![](https://tuchuanglpa.oss-cn-beijing.aliyuncs.com/tuchuanglpa/20250707223944001.png)
 
-# Debug：客户端 释放 火球术呈现向上45，没有追踪效果，视觉上没打中，但敌人会被命中，播放命中动画并扣血，相关改动应该在追踪效果的实现上！！！！！！！！！！！！！
+# Debug12：客户端 释放 火球术呈现向上45，没有追踪效果，视觉上没打中，但敌人会被命中，播放命中动画并扣血，相关改动应该在追踪效果的实现上！！！！！！！！！！！！！
+## 解决：BeginPlay 中添加 SetReplicateMovement(true);并且投射物BP编辑选项中勾选SetReplicateMovement（只能在运行时设置）
 
 
 
