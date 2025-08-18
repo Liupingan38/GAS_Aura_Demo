@@ -3315,14 +3315,71 @@ AttributeMenuWidgetController = NewObject<UAttributeMenuWidgetController>(
 | ✅ 路径自动命名 | 引擎会自动为新对象命名：`OuterName_ObjectName_0`  |
 | ✅ 生命周期绑定 | 避免你手动去 `New` 和 `delete`，由 Unreal 管理内存 |
 | ✅ 避免对象泄漏 | 如果 `Outer` 没有 GC 引用链，相关子对象也会一并释放      |
+好问题 👍，你问到了 **Unreal 里对象的 Outer（外部对象 / 所属对象）**，这确实是很多人初学时容易疑惑的点。
 
+我们看下你的代码：
 
-## ✅ 小结
+```cpp
+LoadScreenViewModel = NewObject<UMVVM_LoadScreen>(this, LoadScreenWidgetClass);
 
-| 参数名     | 解释        | 建议值                                               |
-| ------- | --------- | ------------------------------------------------- |
-| `Outer` | 新对象的“拥有者” | 一般传 `this`                                        |
-| `Class` | 要创建的类     | 如 `UAttributeMenuWidgetController::StaticClass()` |
+LoadScreenWidget = CreateWidget<ULoadScreenWidget>(GetWorld(), LoadScreenWidgetClass);
+```
+
+---
+
+## 🔹 先解释什么是 `Outer`
+
+在 UE 中，每个 `UObject` 都有一个 **Outer（外部容器）**。
+
+* Outer 决定了对象的 **生命周期**（Outer 被销毁时，这个对象也会销毁）。
+* Outer 也是对象在 **对象层级树** 里的“父级”。
+* 常见的 Outer 选择有：
+
+  * `this`（比如某个 Actor/Component） → 意味着对象的生命周期和当前类绑定。
+  * `GetWorld()` → 意味着对象跟随世界存活，直到地图切换才销毁。
+  * `nullptr` → 特殊情况（GC 会管理，但容易泄露，不推荐）。
+
+---
+
+## 🔹 为什么 ViewModel 用 `this`
+
+```cpp
+LoadScreenViewModel = NewObject<UMVVM_LoadScreen>(this, LoadScreenWidgetClass);
+```
+
+* 这里 `Outer = this`，说明 ViewModel 的生命周期和 **ALoadScreenHUD** 绑定。
+* 也就是说，当 `ALoadScreenHUD` 销毁时，`LoadScreenViewModel` 会跟着销毁。
+* 这是合理的：ViewModel 属于 HUD，本质上是 HUD 的内部数据。
+
+---
+
+## 🔹 为什么 Widget 用 `GetWorld()`
+
+```cpp
+LoadScreenWidget = CreateWidget<ULoadScreenWidget>(GetWorld(), LoadScreenWidgetClass);
+```
+
+* `CreateWidget` 内部就是 `NewObject`，它要求 Outer 必须是一个 **UGameInstance / UWorld / LocalPlayer** 级别的对象。
+* 因为 Widget 是 **UI 层级的一部分**，它需要挂在更全局的容器下，而不是某个 Actor。
+* 如果 Outer 只是 `this`（HUD），那么 HUD 一销毁，Widget 也会被销毁，这就会让 UI 生命周期异常短。
+* 挂在 `GetWorld()` 下，可以保证 Widget 在整个世界存活期间可用（直到关卡切换）。
+
+---
+
+## 🔹 总结
+
+* `NewObject<UMVVM_LoadScreen>(this, …)`
+  👉 Outer = `this`（HUD），ViewModel 依赖 HUD 生命周期。
+* `CreateWidget<ULoadScreenWidget>(GetWorld(), …)`
+  👉 Outer = `GetWorld()`，Widget 生命周期绑定到世界，更符合 UI 框架的逻辑。
+
+---
+
+✅ 换句话说：
+
+* **和某个对象强绑定的数据 → Outer = this**
+* **UI / 系统级别的对象 → Outer = GetWorld() / PlayerController / GameInstance**
+
 
 ```cpp
 NewObject<ObjType>(Outer, Class);

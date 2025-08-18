@@ -3,10 +3,13 @@
 #pragma once
 
 #include "CoreMinimal.h"
-#include "AbilitySystem/Data/CharacterClassInfo.h"
+#include "LoadScreenSaveGame.h"
 #include "GameFramework/GameModeBase.h"
 #include "AuraGameModeBase.generated.h"
 
+class USaveGame;
+class UCharacterClassInfo;
+class UMVVM_LoadSlot;
 class UAbilityInfo;
 /**
  * 
@@ -22,4 +25,28 @@ public:
 
 	UPROPERTY(EditDefaultsOnly,Category="AbilityInfo")
 	TObjectPtr<UAbilityInfo> AbilityInfo;
+
+	void SaveSlotData(UMVVM_LoadSlot* LoadSlot,int32 SlotIndex);
+	static void DeleteSlotData(const FString& SlotName,int32 SlotIndex);
+	ULoadScreenSaveGame* GetSaveSlotData(const FString& SlotName,int32 SlotIndex) const;
+
+	void TravelToMap(UMVVM_LoadSlot* LoadSlot);
+
+	UPROPERTY(EditDefaultsOnly)
+	TSubclassOf<USaveGame> LoadScreenSaveGameClass;
+
+	UPROPERTY(EditDefaultsOnly)
+	FString DefaultMapName;
+
+	UPROPERTY(EditDefaultsOnly)
+	TSoftObjectPtr<UWorld> DefaultMap;
+
+	UPROPERTY(EditDefaultsOnly)
+	TMap<FString,TSoftObjectPtr<UWorld>> Maps;
+
+	virtual AActor* ChoosePlayerStart_Implementation(AController* Player) override;
+
+	protected:
+	virtual void BeginPlay() override;
+	
 };
