@@ -9434,7 +9434,141 @@ T* CreateWidget(UWorld* World, TSubclassOf<T> WidgetClass)
   * `CreateWidget` 是 **典型工厂方法**（带初始化、注册逻辑）
   * `NewObject` 更像是 **抽象工厂的底层构件方法**
 
+# 143.`meta=(AllowPrivateAccess="true")`
 
+### 🔹 效果
+
+* **C++ 层面**：`SlotIndex` 仍然是 `private`，外部类无法直接访问。
+* **蓝图层面**：它会像 `public` 一样显示出来，可以读/写、设置默认值。
+* **反射系统**：UE 的 UHT (Unreal Header Tool) 通过 `meta=(AllowPrivateAccess="true")` 允许蓝图访问到 `private` 成员。
+
+
+### 🔹 总结
+
+`meta=(AllowPrivateAccess="true")` 的意思就是：
+
+👉 **在 C++ 里保持私有封装，但允许蓝图访问。**
+
+这样做的好处是：
+
+* 保护了 C++ 代码的封装性（别人不能随便在 C++ 里改你的变量）。
+* 仍然给关卡设计师 / UI 编辑者提供蓝图访问能力。
+
+# 144.`TSoftObjectPtr`
+
+## 🔹 什么是 `TSoftObjectPtr`
+
+`TSoftObjectPtr<T>` 是 Unreal 提供的 **软引用（Soft Pointer）**，用来指向 `UObject` 或 `AActor` 资源，但不会强制加载它。
+
+对比：
+
+* **硬引用（Hard Reference）**：`UPROPERTY()` 普通指针（例如 `UTexture2D*`），在打包时会导致依赖的资源被强制打进包里并提前加载。
+* **软引用（Soft Reference）**：`TSoftObjectPtr<UTexture2D>` 只保存了资源的路径，运行时需要时才会加载，不会强制提前加载。
+
+---
+
+## 🔹 常见声明
+
+```cpp
+// 声明一个软引用到 Texture2D
+UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="UI")
+TSoftObjectPtr<UTexture2D> IconTexture;
+```
+
+在蓝图中，这会显示成一个可以选择 **Asset（资源）** 的属性，但它只保存路径，不会立刻加载。
+
+---
+
+## 🔹 优点
+
+* **减少打包依赖**：避免资源被强制打进包里（除非真的用到）。
+* **节省内存**：资源在没用到时不会加载到内存里。
+* **更适合大项目**：比如 RPG 里一堆武器图标、技能特效，不可能全都在启动时加载。
+
+---
+
+## 🔹 缺点
+
+* **使用前必须加载**（否则 Get() 返回 `nullptr`）。
+* **异步加载有延迟**（UI 或逻辑需要考虑加载时间）。
+* **不适合频繁即时调用**（比如每帧都要访问）。
+
+
+✅ 总结：
+`TSoftObjectPtr` = **路径级别的资源引用**，主要用在 **资源可能很多，但不希望全部加载进内存** 的情况，比如 UI 图片、音效、地图切换用的关卡引用。
+
+# 145.inline 两个用法
+好问题 👍
+你这里 `inline` 的作用，主要是 **C++ 链接规则** 而不是性能优化。
+
+---
+
+## 🔹 为什么 `operator==` 要写成 `inline`？
+
+在 UE 项目里，通常 **`USTRUCT` 会被声明在头文件**，而你给它写的 `operator==` 也放在头文件里：
+
+```cpp
+// SavedAbility.h
+USTRUCT(BlueprintType)
+struct FSavedAbility
+{
+    GENERATED_BODY()
+    ...
+};
+
+inline bool operator==(const FSavedAbility& Left, const FSavedAbility& Right)
+{
+    return Left.AbilityTag == Right.AbilityTag;
+}
+```
+
+### 没有 `inline` 会怎样？
+
+* 如果一个函数定义写在头文件里，
+* 又被多个 `.cpp` 文件 `#include` 了，
+* 那么每个 `.cpp` 都会生成一个 **函数定义副本**，
+
+最终在 **链接阶段** 就会报错：
+
+```
+error LNK2005: "bool __cdecl operator==(FSavedAbility const &,FSavedAbility const &)" 已经定义过
+```
+
+因为链接器不知道应该用哪一个。
+
+---
+
+### 加了 `inline` 会怎样？
+
+* `inline` 的意思是：
+  “这个函数的定义可能会出现在多个翻译单元里，但它们是同一个函数，请链接器只保留一个。”
+* 所以多个 `.cpp` 里重复包含同一个头文件，也不会引发重定义错误。
+
+---
+
+## 🔹 `inline` ≠ 一定展开
+
+很多人以为 `inline` 就是“函数会被编译器内联展开”，其实 **不是**。
+
+* **真正是否展开**，由编译器优化器决定。
+* 在这里，`inline` 主要是 **允许头文件里写函数定义**，而不产生链接冲突。
+
+---
+
+## 🔹 在 UE 里的常见场景
+
+* `operator==` / `operator!=`
+* 简单的 Getter 函数
+* 模板函数（默认就是隐式 inline）
+
+这些函数几乎都会写在 `.h` 里，所以需要 `inline`。
+
+---
+
+✅ **总结**
+
+* `inline` 在这里的作用是 **避免链接错误**，不是为了性能。
+* 因为 `operator==` 定义在头文件中，会被多个 `.cpp` 包含，所以要用 `inline` 告诉编译器和链接器“这是允许的”。
 
 
 

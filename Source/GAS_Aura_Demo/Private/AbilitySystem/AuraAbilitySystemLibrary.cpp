@@ -35,8 +35,9 @@ bool UAuraAbilitySystemLibrary::MakeWidgetControllerParams(const UObject* WorldC
 UOverlayWidgetController* UAuraAbilitySystemLibrary::GetOverlayWidgetController(const UObject* WorldContextObject)
 {
 	FWidgetControllerParams WCParams;
-	AAuraHUD* AuraHUD=nullptr;
-	if (MakeWidgetControllerParams(WorldContextObject, WCParams, AuraHUD)){
+	AAuraHUD* AuraHUD = nullptr;
+	if (MakeWidgetControllerParams(WorldContextObject, WCParams, AuraHUD))
+	{
 		return AuraHUD->GetOverlayWidgetController(WCParams);
 	}
 	return nullptr;
@@ -45,8 +46,9 @@ UOverlayWidgetController* UAuraAbilitySystemLibrary::GetOverlayWidgetController(
 UAttributeMenuWidgetController* UAuraAbilitySystemLibrary::GetAttributeMenuWidgetController(const UObject* WorldContextObject)
 {
 	FWidgetControllerParams WCParams;
-	AAuraHUD* AuraHUD=nullptr;
-	if (MakeWidgetControllerParams(WorldContextObject, WCParams, AuraHUD)){
+	AAuraHUD* AuraHUD = nullptr;
+	if (MakeWidgetControllerParams(WorldContextObject, WCParams, AuraHUD))
+	{
 		return AuraHUD->GetAttributeMenuWidgetController(WCParams);
 	}
 	return nullptr;
@@ -55,8 +57,9 @@ UAttributeMenuWidgetController* UAuraAbilitySystemLibrary::GetAttributeMenuWidge
 USpellMenuWidgetController* UAuraAbilitySystemLibrary::GetSpellMenuWidgetController(const UObject* WorldContextObject)
 {
 	FWidgetControllerParams WCParams;
-	AAuraHUD* AuraHUD=nullptr;
-	if (MakeWidgetControllerParams(WorldContextObject, WCParams, AuraHUD)){
+	AAuraHUD* AuraHUD = nullptr;
+	if (MakeWidgetControllerParams(WorldContextObject, WCParams, AuraHUD))
+	{
 		return AuraHUD->GetSpellMenuWidgetController(WCParams);
 	}
 	return nullptr;
@@ -90,6 +93,40 @@ void UAuraAbilitySystemLibrary::InitializeDefaultAttributes(const UObject* World
 		CharacterClassInfo->VitalAttributes, Level, VitalAttributesContextHandle);
 	ASC->ApplyGameplayEffectSpecToSelf(*VitalAttributesSpecHandle.Data.Get());
 }
+
+void UAuraAbilitySystemLibrary::InitializeDefaultAttributesFromSaveData(const UObject* WorldContextObject, ULoadScreenSaveGame* SaveGame,
+                                                                        UAbilitySystemComponent* ASC)
+{
+	const UCharacterClassInfo* CharacterClassInfo = GetCharacterClassInfo(WorldContextObject);
+	if (CharacterClassInfo == nullptr) return;
+	const FAuraGameplayTags Tags = FAuraGameplayTags::Get();
+	const AActor* SourceAvatar = ASC->GetAvatarActor();
+
+	FGameplayEffectContextHandle ContextHandle = ASC->MakeEffectContext();
+	ContextHandle.AddSourceObject(SourceAvatar);
+
+	const FGameplayEffectSpecHandle SpecHandle = ASC->MakeOutgoingSpec(CharacterClassInfo->PrimaryAttributes_SetByCaller, 1.f,
+	                                                                   ContextHandle);
+	UAbilitySystemBlueprintLibrary::AssignTagSetByCallerMagnitude(SpecHandle, Tags.Attributes_Primary_Strength, SaveGame->Strength);
+	UAbilitySystemBlueprintLibrary::AssignTagSetByCallerMagnitude(SpecHandle, Tags.Attributes_Primary_Intelligence, SaveGame->Intelligence);
+	UAbilitySystemBlueprintLibrary::AssignTagSetByCallerMagnitude(SpecHandle, Tags.Attributes_Primary_Resilience, SaveGame->Resilience);
+	UAbilitySystemBlueprintLibrary::AssignTagSetByCallerMagnitude(SpecHandle, Tags.Attributes_Primary_Vigor, SaveGame->Vigor);
+
+	ASC->ApplyGameplayEffectSpecToSelf(*SpecHandle.Data.Get());
+
+	FGameplayEffectContextHandle SecondaryAttributesContextHandle = ASC->MakeEffectContext();
+	SecondaryAttributesContextHandle.AddSourceObject(SourceAvatar);
+	const FGameplayEffectSpecHandle SecondaryAttributesSpecHandle = ASC->MakeOutgoingSpec(
+		CharacterClassInfo->SecondaryAttributes_Infinite, 1.f, SecondaryAttributesContextHandle);
+	ASC->ApplyGameplayEffectSpecToSelf(*SecondaryAttributesSpecHandle.Data.Get());
+
+	FGameplayEffectContextHandle VitalAttributesContextHandle = ASC->MakeEffectContext();
+	VitalAttributesContextHandle.AddSourceObject(SourceAvatar);
+	const FGameplayEffectSpecHandle VitalAttributesSpecHandle = ASC->MakeOutgoingSpec(
+		CharacterClassInfo->VitalAttributes, 1.f, VitalAttributesContextHandle);
+	ASC->ApplyGameplayEffectSpecToSelf(*VitalAttributesSpecHandle.Data.Get());
+}
+
 
 void UAuraAbilitySystemLibrary::GiveStartupAbilities(const UObject* WorldContextObject, ECharacterClass CharacterClass,
                                                      UAbilitySystemComponent* ASC)
@@ -128,23 +165,23 @@ int32 UAuraAbilitySystemLibrary::GetXPRewardForClassAndLevel(const UObject* Worl
 
 FGameplayEffectContextHandle UAuraAbilitySystemLibrary::ApplyDamageEffect(const FDamageEffectParams& Params)
 {
-	const FAuraGameplayTags& Tags=FAuraGameplayTags::Get();
-	const UAbilitySystemComponent* SourceASC=Params.SourceAbilitySystemComponent;
-	
-	FGameplayEffectContextHandle ContextHandle=SourceASC->MakeEffectContext();
+	const FAuraGameplayTags& Tags = FAuraGameplayTags::Get();
+	const UAbilitySystemComponent* SourceASC = Params.SourceAbilitySystemComponent;
+
+	FGameplayEffectContextHandle ContextHandle = SourceASC->MakeEffectContext();
 	ContextHandle.AddSourceObject(SourceASC->GetAvatarActor());
 	SetDeathImpulse(ContextHandle, Params.DeathImpulse);
 	SetKnockbackImpulse(ContextHandle, Params.KnockbackImpulse);
-	
-	const FGameplayEffectSpecHandle SpecHandle=SourceASC->MakeOutgoingSpec(
-		Params.DamageGameplayEffectClass,Params.AbilityLevel,ContextHandle);
-	
-	UAbilitySystemBlueprintLibrary::AssignTagSetByCallerMagnitude(SpecHandle,Params.DamageType,Params.BaseDamage);
-	UAbilitySystemBlueprintLibrary::AssignTagSetByCallerMagnitude(SpecHandle,Tags.Debuff_Chance,Params.DebuffChance);
-	UAbilitySystemBlueprintLibrary::AssignTagSetByCallerMagnitude(SpecHandle,Tags.Debuff_Damage,Params.DebuffDamage);
-	UAbilitySystemBlueprintLibrary::AssignTagSetByCallerMagnitude(SpecHandle,Tags.Debuff_Duration,Params.DebuffDuration);
-	UAbilitySystemBlueprintLibrary::AssignTagSetByCallerMagnitude(SpecHandle,Tags.Debuff_Frequency,Params.DebuffFrequency);
-	
+
+	const FGameplayEffectSpecHandle SpecHandle = SourceASC->MakeOutgoingSpec(
+		Params.DamageGameplayEffectClass, Params.AbilityLevel, ContextHandle);
+
+	UAbilitySystemBlueprintLibrary::AssignTagSetByCallerMagnitude(SpecHandle, Params.DamageType, Params.BaseDamage);
+	UAbilitySystemBlueprintLibrary::AssignTagSetByCallerMagnitude(SpecHandle, Tags.Debuff_Chance, Params.DebuffChance);
+	UAbilitySystemBlueprintLibrary::AssignTagSetByCallerMagnitude(SpecHandle, Tags.Debuff_Damage, Params.DebuffDamage);
+	UAbilitySystemBlueprintLibrary::AssignTagSetByCallerMagnitude(SpecHandle, Tags.Debuff_Duration, Params.DebuffDuration);
+	UAbilitySystemBlueprintLibrary::AssignTagSetByCallerMagnitude(SpecHandle, Tags.Debuff_Frequency, Params.DebuffFrequency);
+
 	Params.TargetAbilitySystemComponent->ApplyGameplayEffectSpecToSelf(*SpecHandle.Data.Get());
 	return ContextHandle;
 }
@@ -382,10 +419,10 @@ void UAuraAbilitySystemLibrary::GetLivePlayerWithinRadius(const UObject* WorldCo
 }
 
 void UAuraAbilitySystemLibrary::GetClosestTargets(const FVector& Origin, int32 NumTargets, const TArray<AActor*>& Actors,
-	TArray<AActor*>& OutClosestTargets)
+                                                  TArray<AActor*>& OutClosestTargets)
 {
-	if (NumTargets < 1)	return;
-	
+	if (NumTargets < 1) return;
+
 	OutClosestTargets.Empty();
 	if (Actors.Num() <= NumTargets)
 	{
@@ -409,9 +446,9 @@ void UAuraAbilitySystemLibrary::GetClosestTargets(const FVector& Origin, int32 N
 	for (AActor* Actor : Actors)
 	{
 		if (!Actor) continue;
-		
-		const float CurDistanceSquared=FVector::DistSquared(Origin, Actor->GetActorLocation());
-		FDistanceSquaredActor CurActor={CurDistanceSquared, Actor};
+
+		const float CurDistanceSquared = FVector::DistSquared(Origin, Actor->GetActorLocation());
+		FDistanceSquaredActor CurActor = {CurDistanceSquared, Actor};
 		if (Heap.Num() < NumTargets)
 		{
 			Heap.Add(CurActor);
@@ -419,9 +456,10 @@ void UAuraAbilitySystemLibrary::GetClosestTargets(const FVector& Origin, int32 N
 			{
 				Algo::Heapify(Heap);
 			}
-		}else if (CurDistanceSquared<Heap[0].SquaredDistance)
+		}
+		else if (CurDistanceSquared < Heap[0].SquaredDistance)
 		{
-			Heap[0]=CurActor;
+			Heap[0] = CurActor;
 			Algo::Heapify(Heap);
 		}
 	}
@@ -429,7 +467,6 @@ void UAuraAbilitySystemLibrary::GetClosestTargets(const FVector& Origin, int32 N
 	{
 		OutClosestTargets.Add(Actor);
 	}
-	
 }
 
 bool UAuraAbilitySystemLibrary::IsNotFriend(AActor* FirstActor, AActor* SecondActor)

@@ -23,9 +23,9 @@ void UOverlayWidgetController::BindCallbacksToDependencies()
 {
 	GetAuraPS()->OnXPChangedDelegate.AddUObject(this, &UOverlayWidgetController::OnXPChanged);
 	GetAuraPS()->OnLevelChangedDelegate.AddLambda(
-	[this](int32 NewLevel)
+	[this](int32 NewLevel,bool bLevelUp)
 		{
-			OnPlayerLevelChangedDelegate.Broadcast(NewLevel);
+			OnPlayerLevelChangedDelegate.Broadcast(NewLevel,bLevelUp);
 		}
 	);
 
@@ -59,7 +59,7 @@ void UOverlayWidgetController::BindCallbacksToDependencies()
 	{
 		GetAuraASC()->AbilityEquippedDelegate.AddUObject(this,&UOverlayWidgetController::OnAbilityEquipped);
 		
-		if (GetAuraASC()->bStartupAbilitiesGiven)
+		if (GetAuraASC()->bStartupAbilitiesHasGiven)
 		{
 			BroadcastAbilityInfo();
 		}

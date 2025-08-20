@@ -55,4 +55,7 @@ public:
 
 	UFUNCTION(BlueprintNativeEvent)
 	int32 FindLevelForXP(int32 InXP) const;
+
+	UFUNCTION(BlueprintNativeEvent,BlueprintCallable)
+	void SaveProgress(const FName& CheckPointTag);
 };

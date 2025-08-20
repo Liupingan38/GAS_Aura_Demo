@@ -3,15 +3,21 @@
 
 #include "Character/AuraCharacter.h"
 
+#include "AbilitySystemBlueprintLibrary.h"
 #include "AbilitySystemComponent.h"
 #include "AuraGameplayTags.h"
 #include "NiagaraComponent.h"
 #include "AbilitySystem/AuraAbilitySystemComponent.h"
+#include "AbilitySystem/AuraAbilitySystemLibrary.h"
+#include "AbilitySystem/AuraAttributeSet.h"
+#include "AbilitySystem/Data/AbilityInfo.h"
 #include "AbilitySystem/Data/LevelUpInfo.h"
 #include "AbilitySystem/Debuff/DebuffNiagaraComponent.h"
 #include "Camera/CameraComponent.h"
+#include "Game/AuraGameModeBase.h"
 #include "GameFramework/CharacterMovementComponent.h"
 #include "GameFramework/SpringArmComponent.h"
+#include "Kismet/GameplayStatics.h"
 #include "Player/AuraPlayerController.h"
 #include "Player/AuraPlayerState.h"
 #include "UI/HUD/AuraHUD.h"
@@ -53,9 +59,43 @@ void AAuraCharacter::PossessedBy(AController* NewController)
 	// Init Ability Actor Info for the Server
 	InitAbilityActorInfo();
 
-	//SetOwner(NewController);设置OwnerActor
+	LoadProgress();
+}
 
-	AddCharacterAbilities();
+void AAuraCharacter::LoadProgress()
+{
+	if (AAuraGameModeBase* AuraGameMode = Cast<AAuraGameModeBase>(UGameplayStatics::GetGameMode(this)))
+	{
+		ULoadScreenSaveGame* SaveGame = AuraGameMode->RetrieveInGameSaveData();
+		if (SaveGame == nullptr) return;
+
+		if (SaveGame->bFirstTimeLoadIn)//首次加载
+		{
+			//直接加载AS上的状态的初始值
+			//加载ASC上的属性
+			InitializeDefaultAttributes();
+			//加载ASC上的技能
+			AddCharacterAbilities();
+		}
+		else
+		{
+			//加载AS上的状态
+			if (AAuraPlayerState* AuraPlayerState = GetPlayerState<AAuraPlayerState>())
+			{
+				AuraPlayerState->SetLevel(SaveGame->PlayerLevel);
+				AuraPlayerState->SetXP(SaveGame->XP);
+				AuraPlayerState->SetAttributePoint(SaveGame->AttributePoints);
+				AuraPlayerState->SetSpellPoint(SaveGame->SpellPoints);
+			}
+			//加载ASC上的属性
+			UAuraAbilitySystemLibrary::InitializeDefaultAttributesFromSaveData(this, SaveGame, AbilitySystemComponent);
+			//加载ASC上的技能
+			if (UAuraAbilitySystemComponent* AuraASC=Cast<UAuraAbilitySystemComponent>(AbilitySystemComponent))
+			{
+				AuraASC->AddCharacterAbilitiesFormSaveGame(SaveGame);
+			}
+		}
+	}
 }
 
 void AAuraCharacter::OnRep_PlayerState()
@@ -191,12 +231,62 @@ int32 AAuraCharacter::GetSpellPoint_Implementation() const
 	return AuraPlayerState->GetSpellPoint();
 }
 
+void AAuraCharacter::SaveProgress_Implementation(const FName& CheckPointTag)
+{
+	if (AAuraGameModeBase* AuraGameMode = Cast<AAuraGameModeBase>(UGameplayStatics::GetGameMode(this)))
+	{
+		ULoadScreenSaveGame* SaveGame = AuraGameMode->RetrieveInGameSaveData();
+		if (SaveGame == nullptr) return;
+		SaveGame->PlayerStartTag = CheckPointTag;
+
+		if (AAuraPlayerState* AuraPlayerState = GetPlayerState<AAuraPlayerState>())
+		{
+			SaveGame->PlayerLevel = AuraPlayerState->GetPlayerLevel();
+			SaveGame->XP = AuraPlayerState->GetXP();
+			SaveGame->AttributePoints = AuraPlayerState->GetAttributePoint();
+			SaveGame->SpellPoints = AuraPlayerState->GetSpellPoint();
+		}
+		SaveGame->Strength = UAuraAttributeSet::GetStrengthAttribute().GetNumericValue(GetAttributeSet());
+		SaveGame->Intelligence = UAuraAttributeSet::GetIntelligenceAttribute().GetNumericValue(GetAttributeSet());
+		SaveGame->Resilience = UAuraAttributeSet::GetResilienceAttribute().GetNumericValue(GetAttributeSet());
+		SaveGame->Vigor = UAuraAttributeSet::GetVigorAttribute().GetNumericValue(GetAttributeSet());
+		SaveGame->bFirstTimeLoadIn = false;
+
+		if (!HasAuthority()) return;
+		UAuraAbilitySystemComponent* AuraASC = Cast<UAuraAbilitySystemComponent>(GetAbilitySystemComponent());
+
+		SaveGame->SavedAbilities.Empty();
+		FForEachAbility SaveAbilityDelegate;
+		SaveAbilityDelegate.BindLambda([this,AuraASC,SaveGame](const FGameplayAbilitySpec& Spec)
+		{
+			const FGameplayTag AbilityTag = AuraASC->GetAbilityTagFromSpec(Spec);
+			const UAbilityInfo* AbilityInfo = UAuraAbilitySystemLibrary::GetAbilityInfo(this);
+			FAuraAbilityInfo Info = AbilityInfo->FindAbilityInfoForTag(AbilityTag);
+
+			FSavedAbility SavedAbility;
+			SavedAbility.AbilityClass = Info.AbilityClass;
+			SavedAbility.AbilityTag = AbilityTag;
+			SavedAbility.AbilityType=Info.TypeTag;
+			SavedAbility.AbilityLevel = Spec.Level;
+			SavedAbility.AbilityStatus = AuraASC->GetStatusTagFromAbilityTag(AbilityTag);
+			SavedAbility.AbilitySlot = AuraASC->GetSlotFromAbilityTag(AbilityTag);
+
+			SaveGame->SavedAbilities.AddUnique(SavedAbility);
+		});
+
+		AuraASC->ForEachAbility(SaveAbilityDelegate);
+
+		AuraGameMode->SaveInGameProgressData(SaveGame);
+	}
+}
+
 int32 AAuraCharacter::GetCombatCharacterLevel_Implementation()
 {
 	const AAuraPlayerState* AuraPlayerState = GetPlayerState<AAuraPlayerState>();
 	check(AuraPlayerState);
 	return AuraPlayerState->GetPlayerLevel();
 }
+
 
 void AAuraCharacter::InitAbilityActorInfo()
 {
@@ -218,6 +308,4 @@ void AAuraCharacter::InitAbilityActorInfo()
 			AuraHUD->InitOverlay(AuraPlayerController, AuraPlayerState, AbilitySystemComponent, AttributeSet);
 		}
 	}
-	//初始化主要属性 和 次要属性,使用游戏效果实现
-	InitializeDefaultAttributes();
 }

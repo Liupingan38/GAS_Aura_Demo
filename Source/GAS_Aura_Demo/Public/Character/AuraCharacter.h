@@ -25,6 +25,7 @@ public:
 	virtual void OnRep_PlayerState() override;
 	virtual void OnRep_Stunned() override;
 	virtual void OnRep_Burned() override;
+	
 	//~ Begin Player Interface
 	virtual void AddToXP_Implementation(int32 InXP) override;
 	virtual void AddToLevel_Implementation(int32 InLevel) override;
@@ -37,6 +38,7 @@ public:
 	virtual int32 GetSpellPointReward_Implementation(int32 InLevel) const override;
 	virtual int32 GetAttributePoint_Implementation() const override;
 	virtual int32 GetSpellPoint_Implementation() const override;
+	virtual void SaveProgress_Implementation(const FName& CheckPointTag) override;
 	//~ End Player Interface
 
 	//~ Begin Combat Interface
@@ -45,6 +47,8 @@ public:
 
 	UPROPERTY(VisibleAnywhere,BlueprintReadOnly)
 	TObjectPtr<UNiagaraComponent> LevelUpNiagaraComponent;
+
+	void LoadProgress();
 private:
 	UPROPERTY(VisibleAnywhere)
 	TObjectPtr<UCameraComponent> TopDownCameraComponent;

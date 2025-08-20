@@ -30,10 +30,10 @@ public:
 	UMVVM_LoadSlot * GetLoadSlotByIndex(int32 Index) const;
 
 	UFUNCTION(BlueprintCallable)
-	void NewGameButtonPressed(int32 SlotIndex);
+	void NewGameButtonPressed(int32 InSlotIndex);
 	
 	UFUNCTION(BlueprintCallable)
-	void NewSlotButtonPressed(int32 SlotIndex,const FString& EnteredName);
+	void NewSlotButtonPressed(int32 InSlotIndex,const FString& EnteredName);
 
 	UFUNCTION(BlueprintCallable)
 	void SelectSlotButtonPressed(int32 InSlotIndex);
