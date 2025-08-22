@@ -6,16 +6,24 @@
 #include "GameFramework/PlayerController.h"
 #include "AuraPlayerController.generated.h"
 
+struct FGameplayTag;
+struct FInputActionValue;
+class IHighlightInterface;
 class UNiagaraSystem;
 class UDamageTextComponent;
 class USplineComponent;
 class UAuraAbilitySystemComponent;
-struct FGameplayTag;
-class IEnemyInterface;
-struct FInputActionValue;
 class UInputAction;
 class UInputMappingContext;
 class UAuraInputConfig;
+
+enum class ETargetingStatus:uint8
+{
+	Enemy,
+	Ally,
+	Neutral,
+	None
+};
 
 UCLASS()
 class GAS_AURA_DEMO_API AAuraPlayerController : public APlayerController
@@ -49,11 +57,15 @@ private:
 
 	void Move(const FInputActionValue& InputActionValue);
 
+	static void HighlightActor(AActor* InActor);
+	static void UnHighlightActor(AActor* InActor);
 	void CursorTrace();
-	TScriptInterface<IEnemyInterface> LastActor;
-	TScriptInterface<IEnemyInterface> ThisActor;
 	FHitResult CursorHit;
-
+	UPROPERTY()
+	TObjectPtr<AActor> LastActor;
+	UPROPERTY()
+	TObjectPtr<AActor> ThisActor;
+	
 	void AbilityInputTagPressed(FGameplayTag InputTag);
 	void AbilityInputTagReleased(FGameplayTag InputTag);
 	void AbilityInputTagHeld(FGameplayTag InputTag);
@@ -70,7 +82,7 @@ private:
 	float FollowTime = 0.f;
 	float ShortPressedThreshold = 0.5f;
 	bool bAutoRun = false;
-	bool bTargeting = false;
+	ETargetingStatus TargetingStatus = ETargetingStatus::None;
 
 	UPROPERTY(EditAnywhere)
 	float AutoRunAcceptanceRadius = 20.f;

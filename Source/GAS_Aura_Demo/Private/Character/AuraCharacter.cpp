@@ -60,6 +60,13 @@ void AAuraCharacter::PossessedBy(AController* NewController)
 	InitAbilityActorInfo();
 
 	LoadProgress();
+
+	if (AAuraGameModeBase* AuraGameMode = Cast<AAuraGameModeBase>(UGameplayStatics::GetGameMode(this)))
+	{
+		//加载地图及其上的Actors的状态
+		AuraGameMode->LoadWorldState(GetWorld());
+	}
+	
 }
 
 void AAuraCharacter::LoadProgress()
@@ -68,7 +75,7 @@ void AAuraCharacter::LoadProgress()
 	{
 		ULoadScreenSaveGame* SaveGame = AuraGameMode->RetrieveInGameSaveData();
 		if (SaveGame == nullptr) return;
-
+		
 		if (SaveGame->bFirstTimeLoadIn)//首次加载
 		{
 			//直接加载AS上的状态的初始值

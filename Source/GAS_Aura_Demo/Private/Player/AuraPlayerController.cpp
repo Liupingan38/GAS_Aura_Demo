@@ -15,6 +15,8 @@
 #include "GameFramework/Character.h"
 #include "Input/AuraInputComponent.h"
 #include "Interaction/EnemyInterface.h"
+#include "Interaction/HighlightInterface.h"
+#include "Interaction/PlayerInterface.h"
 
 #include "UI/Widget/DamageTextComponent.h"
 
@@ -68,8 +70,8 @@ void AAuraPlayerController::CursorTrace()
 {
 	if (GetASC() && GetASC()->HasMatchingGameplayTag(FAuraGameplayTags::Get().Player_Block_CursorTrace))
 	{
-		if (LastActor) LastActor->UnHighlight();
-		if (ThisActor) ThisActor->UnHighlight();
+		UnHighlightActor(LastActor);
+		UnHighlightActor(ThisActor);
 		LastActor = nullptr;
 		ThisActor = nullptr;
 		return;
@@ -78,12 +80,32 @@ void AAuraPlayerController::CursorTrace()
 	if (!CursorHit.bBlockingHit) return;
 
 	LastActor = ThisActor;
-	ThisActor = CursorHit.GetActor();
+	ThisActor = nullptr;
+	if (IsValid(CursorHit.GetActor()) && CursorHit.GetActor()->Implements<UHighlightInterface>())
+	{
+		ThisActor = CursorHit.GetActor();
+	}
 
 	if (LastActor != ThisActor)
 	{
-		if (LastActor) LastActor->UnHighlight();
-		if (ThisActor) ThisActor->Highlight();
+		UnHighlightActor(LastActor);
+		HighlightActor(ThisActor);
+	}
+}
+
+void AAuraPlayerController::HighlightActor(AActor* InActor)
+{
+	if (IsValid(InActor) && InActor->Implements<UHighlightInterface>())
+	{
+		IHighlightInterface::Execute_Highlight(InActor);
+	}
+}
+
+void AAuraPlayerController::UnHighlightActor(AActor* InActor)
+{
+	if (IsValid(InActor) && InActor->Implements<UHighlightInterface>())
+	{
+		IHighlightInterface::Execute_UnHighlight(InActor);
 	}
 }
 
@@ -139,6 +161,7 @@ void AAuraPlayerController::Move(const FInputActionValue& InputActionValue)
 	}
 }
 
+
 void AAuraPlayerController::AbilityInputTagPressed(FGameplayTag InputTag)
 {
 	if (GetASC() && GetASC()->HasMatchingGameplayTag(FAuraGameplayTags::Get().Player_Block_InputPressed))
@@ -147,7 +170,25 @@ void AAuraPlayerController::AbilityInputTagPressed(FGameplayTag InputTag)
 	}
 	if (InputTag.MatchesTagExact(FAuraGameplayTags::Get().InputTag_LMB))
 	{
-		bTargeting = ThisActor ? true : false;
+		if (IsValid(ThisActor))
+		{
+			if (ThisActor->Implements<UEnemyInterface>())
+			{
+				TargetingStatus = ETargetingStatus::Enemy;
+			}
+			else if (ThisActor->Implements<UPlayerInterface>())
+			{
+				TargetingStatus = ETargetingStatus::Ally;
+			}
+			else if (ThisActor->Implements<UHighlightInterface>())
+			{
+				TargetingStatus = ETargetingStatus::Neutral;
+			}
+		}
+		else
+		{
+			TargetingStatus = ETargetingStatus::None;
+		}
 		bAutoRun = false;
 	}
 	if (GetASC()) GetASC()->AbilityInputTagPressed(InputTag);
@@ -166,11 +207,19 @@ void AAuraPlayerController::AbilityInputTagReleased(FGameplayTag InputTag)
 	}
 	if (GetASC()) GetASC()->AbilityInputTagReleased(InputTag); //传递左键技能的Tag
 
-	if (!bTargeting && !bShiftPressed) //瞄准敌人或按住shift键都不是短按！
+	if (TargetingStatus != ETargetingStatus::Enemy && !bShiftPressed) //瞄准敌人或按住shift键都不是短按！
 	{
 		const APawn* ControlledPawn = GetPawn();
 		if (FollowTime <= ShortPressedThreshold && ControlledPawn) //自动移动(短按)
 		{
+			if (IsValid(ThisActor) && ThisActor->Implements<UHighlightInterface>())
+			{
+				IHighlightInterface::Execute_SetMoveToLocation(ThisActor, CachedDestination);
+			}
+			else if (GetASC() && !GetASC()->HasMatchingGameplayTag(FAuraGameplayTags::Get().Player_Block_InputPressed))
+			{
+				UNiagaraFunctionLibrary::SpawnSystemAtLocation(this, ClickNiagaraSystem, CachedDestination);
+			}
 			if (UNavigationPath* NavPath = UNavigationSystemV1::FindPathToLocationSynchronously(
 				this, ControlledPawn->GetActorLocation(), CachedDestination))
 			{
@@ -185,12 +234,8 @@ void AAuraPlayerController::AbilityInputTagReleased(FGameplayTag InputTag)
 					bAutoRun = true;
 				}
 			}
-			if (GetASC() && !GetASC()->HasMatchingGameplayTag(FAuraGameplayTags::Get().Player_Block_InputPressed))
-			{
-				UNiagaraFunctionLibrary::SpawnSystemAtLocation(this, ClickNiagaraSystem, CachedDestination);
-			}
 		}
-		bTargeting = false;
+		TargetingStatus = ETargetingStatus::None;
 		FollowTime = 0.f;
 	}
 }
@@ -209,7 +254,7 @@ void AAuraPlayerController::AbilityInputTagHeld(FGameplayTag InputTag)
 	}
 
 	//Tag为鼠标左键时，则处理 鼠标左键能力的Tag 或是 移动
-	if (bTargeting || bShiftPressed) //处理 鼠标左键能力的Tag
+	if (TargetingStatus == ETargetingStatus::Enemy || bShiftPressed) //处理 鼠标左键能力的Tag
 	{
 		if (GetASC()) GetASC()->AbilityInputTagHeld(InputTag);
 	}

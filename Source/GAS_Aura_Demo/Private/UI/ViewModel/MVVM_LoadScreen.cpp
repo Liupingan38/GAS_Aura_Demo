@@ -40,6 +40,11 @@ void UMVVM_LoadScreen::NewGameButtonPressed(int32 InSlotIndex)
 void UMVVM_LoadScreen::NewSlotButtonPressed(int32 InSlotIndex, const FString& EnteredName)
 {
 	AAuraGameModeBase* AuraGameMode=Cast<AAuraGameModeBase>(UGameplayStatics::GetGameMode(this));
+	if (!IsValid(AuraGameMode))
+	{
+		GEngine->AddOnScreenDebugMessage(1,15.f,FColor::Red,FString("Please switch to Single Player"));
+		return;
+	}
 	LoadSlotMap[InSlotIndex]->SetPlayerName(EnteredName);
 	LoadSlotMap[InSlotIndex]->SlotStatus=Entered;
 	LoadSlotMap[InSlotIndex]->SetMapName(AuraGameMode->DefaultMapName);
@@ -62,7 +67,7 @@ void UMVVM_LoadScreen::SelectSlotButtonPressed(int32 InSlotIndex)
 	SelectedSlot=LoadSlotMap[InSlotIndex];
 	for (const TPair<int, UMVVM_LoadSlot*>& Pair:LoadSlotMap)
 	{
-		int32 SlotIndex=Pair.Key;
+		const int32 SlotIndex=Pair.Key;
 		const UMVVM_LoadSlot* LoadSlotViewModel=Pair.Value;
 		if (SlotIndex==InSlotIndex)
 		{
@@ -102,10 +107,11 @@ void UMVVM_LoadScreen::RUSDeleteButtonPressed()
 
 void UMVVM_LoadScreen::LoadData()
 {
-	AAuraGameModeBase* AuraGameMode=Cast<AAuraGameModeBase>(UGameplayStatics::GetGameMode(this));
+	const AAuraGameModeBase* AuraGameMode=Cast<AAuraGameModeBase>(UGameplayStatics::GetGameMode(this));
+	if (!IsValid(AuraGameMode)) return; //客户端无法加载
 	for (const TPair<int, UMVVM_LoadSlot*>& Pair:LoadSlotMap)
 	{
-		int32 SlotIndex=Pair.Key;
+		const int32 SlotIndex=Pair.Key;
 		UMVVM_LoadSlot* LoadSlotViewModel=Pair.Value;
 		const ULoadScreenSaveGame* SaveGame=AuraGameMode->GetSaveSlotData(LoadSlotViewModel->GetLoadSlotName(), SlotIndex);
 		

@@ -22,29 +22,62 @@ struct FSavedAbility
 {
 	GENERATED_BODY()
 
-	UPROPERTY(EditDefaultsOnly,BlueprintReadOnly,Category="ClassDefaults")
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category="ClassDefaults")
 	TSubclassOf<UGameplayAbility> AbilityClass;
 
-	UPROPERTY(EditDefaultsOnly,BlueprintReadWrite)
-	FGameplayTag AbilityTag=FGameplayTag();
+	UPROPERTY(EditDefaultsOnly, BlueprintReadWrite)
+	FGameplayTag AbilityTag = FGameplayTag();
 
-	UPROPERTY(EditDefaultsOnly,BlueprintReadWrite)
-	FGameplayTag AbilityType=FGameplayTag();
+	UPROPERTY(EditDefaultsOnly, BlueprintReadWrite)
+	FGameplayTag AbilityType = FGameplayTag();
 
-	UPROPERTY(EditDefaultsOnly,BlueprintReadWrite)
-	FGameplayTag AbilitySlot=FGameplayTag();
+	UPROPERTY(EditDefaultsOnly, BlueprintReadWrite)
+	FGameplayTag AbilitySlot = FGameplayTag();
 
-	UPROPERTY(EditDefaultsOnly,BlueprintReadWrite)
-	FGameplayTag AbilityStatus=FGameplayTag();
+	UPROPERTY(EditDefaultsOnly, BlueprintReadWrite)
+	FGameplayTag AbilityStatus = FGameplayTag();
 
-	UPROPERTY(EditDefaultsOnly,BlueprintReadWrite)
-	int32 AbilityLevel;
+	UPROPERTY(EditDefaultsOnly, BlueprintReadWrite)
+	int32 AbilityLevel = 1;
 };
 
 inline bool operator==(const FSavedAbility& Left, const FSavedAbility& Right)
 {
-	return Left.AbilityTag==Right.AbilityTag;
+	return Left.AbilityTag == Right.AbilityTag;
 }
+
+USTRUCT(BlueprintType)
+struct FSavedActor
+{
+	GENERATED_BODY()
+
+	UPROPERTY()
+	FName ActorName = FName();
+
+	UPROPERTY()
+	FTransform ActorTransform = FTransform();
+
+	UPROPERTY()
+	TArray<uint8> Bytes;
+};
+
+inline bool operator==(const FSavedActor& Left, const FSavedActor& Right)
+{
+	return Left.ActorName == Right.ActorName;
+}
+
+USTRUCT(BlueprintType)
+struct FSavedMap
+{
+	GENERATED_BODY()
+
+	UPROPERTY()
+	FString MapName = FString();
+
+	UPROPERTY()
+	TArray<FSavedActor> SavedActors;
+};
+
 
 /**
  * 
@@ -65,8 +98,11 @@ public:
 	FString PlayerName = FString("Default Name");
 
 	UPROPERTY()
-	FString MapName = FString();
+	FString MapName = FString("Default Map Name");
 
+	UPROPERTY()
+	FString MapAssetName = FString("Default Map Asset Name");
+	
 	UPROPERTY()
 	FName PlayerStartTag;
 
@@ -94,8 +130,12 @@ public:
 	float Vigor = 0;
 
 	/* 技能 */
-
 	UPROPERTY()
 	TArray<FSavedAbility> SavedAbilities;
-	
+
+	UPROPERTY()
+	TArray<FSavedMap> SavedMaps;
+
+	FSavedMap GetSavedMapFromMapName(const FString& InMapName);
+	bool HasMap(const FString& InMapName);
 };
