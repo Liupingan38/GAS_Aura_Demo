@@ -294,6 +294,22 @@ int32 AAuraCharacter::GetCombatCharacterLevel_Implementation()
 	return AuraPlayerState->GetPlayerLevel();
 }
 
+void AAuraCharacter::Die(const FVector& DeathImpulse)
+{
+	Super::Die(DeathImpulse);
+	FTimerDelegate TimerDelegate;
+	TimerDelegate.BindLambda([this]()
+	{
+		AAuraGameModeBase* AuraGameMode=Cast<AAuraGameModeBase>(UGameplayStatics::GetGameMode(this));
+		if (AuraGameMode)
+		{
+			AuraGameMode->PlayerDied(this);
+		}
+	});
+	GetWorldTimerManager().SetTimer(DeathTimerHandle,TimerDelegate,DeathTime,false);
+	
+}
+
 
 void AAuraCharacter::InitAbilityActorInfo()
 {

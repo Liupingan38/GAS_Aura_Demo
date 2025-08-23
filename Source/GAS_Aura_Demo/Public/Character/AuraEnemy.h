@@ -17,20 +17,20 @@ class AAuraAIController;
  * 
  */
 UCLASS()
-class GAS_AURA_DEMO_API AAuraEnemy : public AAuraCharacterBase, public IEnemyInterface,public IHighlightInterface
+class GAS_AURA_DEMO_API AAuraEnemy : public AAuraCharacterBase, public IEnemyInterface, public IHighlightInterface
 {
 	GENERATED_BODY()
 
 public:
 	AAuraEnemy();
 	virtual void PossessedBy(AController* NewController) override;
-	
+
 	//~ Begin Highlight Interface
 	virtual void Highlight_Implementation() override;
 	virtual void UnHighlight_Implementation() override;
 	virtual void SetMoveToLocation_Implementation(FVector& OutDestination) override;
 	//~ Begin Highlight Interface
-	
+
 	//~ Begin Enemy Interface
 	virtual void SetCombatTarget_Implementation(AActor* InCombatTarget) override;
 	virtual AActor* GetCombatTarget_Implementation() const override;
@@ -52,11 +52,13 @@ public:
 	UPROPERTY(BlueprintReadOnly, Category="Combat")
 	bool bHitReacting = false;
 
-	UPROPERTY(EditAnywhere,BlueprintReadOnly, Category="Combat")
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Combat")
 	float LifeSpan = 5.f;
-	
+
 	UPROPERTY(BlueprintReadWrite, Category="Combat")
 	TObjectPtr<AActor> CombatTarget;
+
+	void SetLevel(const int32 NewLevel) { Level = NewLevel; }
 
 protected:
 	virtual void BeginPlay() override;
@@ -71,7 +73,7 @@ protected:
 
 	UPROPERTY()
 	TObjectPtr<AAuraAIController> AuraAIController;
-	
+
 	UPROPERTY(EditAnywhere, Category="AI")
 	TObjectPtr<UBehaviorTree> BehaviorTree;
 };

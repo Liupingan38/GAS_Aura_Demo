@@ -71,14 +71,15 @@ public:
 	bool bIsBurned = false;
 
 	UPROPERTY(Replicated, BlueprintReadOnly)
-	bool bIsBeingShocked=false;
-	
+	bool bIsBeingShocked = false;
+
 	UFUNCTION()
 	virtual void OnRep_Stunned();
 
 	UFUNCTION()
 	virtual void OnRep_Burned();
 
+	void SetCharacterClass(const ECharacterClass InClass) { CharacterClass = InClass; }
 
 protected:
 	virtual void BeginPlay() override;
@@ -97,6 +98,7 @@ protected:
 	UPROPERTY(EditAnywhere, Category="Combat")
 	FName TailSocketName;
 
+	UPROPERTY(BlueprintReadOnly)
 	bool bDead = false;
 
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Combat")
@@ -175,7 +177,7 @@ private:
 
 	UPROPERTY(VisibleAnywhere)
 	TObjectPtr<UPassiveNiagaraComponent> ManaSiphonNiagaraComponent;
-	
+
 	UPROPERTY(VisibleAnywhere)
 	TObjectPtr<USceneComponent> EffectAttachComponent;
 };

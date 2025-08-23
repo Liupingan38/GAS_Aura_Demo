@@ -3,25 +3,51 @@
 
 #include "Actor/AuraEnemySpawnVolume.h"
 
-// Sets default values
+#include "Actor/AuraEnemySpawnPoint.h"
+#include "Components/BoxComponent.h"
+#include "Interaction/PlayerInterface.h"
+
+
 AAuraEnemySpawnVolume::AAuraEnemySpawnVolume()
 {
- 	// Set this actor to call Tick() every frame.  You can turn this off to improve performance if you don't need it.
-	PrimaryActorTick.bCanEverTick = true;
+	PrimaryActorTick.bCanEverTick = false;
 
+	Box=CreateDefaultSubobject<UBoxComponent>(TEXT("Box"));
+	SetRootComponent(Box);
+	Box->SetCollisionEnabled(ECollisionEnabled::Type::QueryOnly);
+	Box->SetCollisionObjectType(ECC_WorldStatic);
+	Box->SetCollisionResponseToAllChannels(ECR_Ignore);
+	Box->SetCollisionResponseToChannel(ECC_Pawn,ECR_Overlap);
 }
 
-// Called when the game starts or when spawned
+void AAuraEnemySpawnVolume::LoadActor_Implementation()
+{
+	if (bReached)
+	{
+		Destroy();
+	}	
+}
+
 void AAuraEnemySpawnVolume::BeginPlay()
 {
 	Super::BeginPlay();
-	
+	Box->OnComponentBeginOverlap.AddDynamic(this,&AAuraEnemySpawnVolume::OnBoxOverlap);
 }
 
-// Called every frame
-void AAuraEnemySpawnVolume::Tick(float DeltaTime)
+void AAuraEnemySpawnVolume::OnBoxOverlap(UPrimitiveComponent* OverlappedComponent, AActor* OtherActor, UPrimitiveComponent* OtherComp,
+	int32 OtherBodyIndex, bool bFromSweep, const FHitResult& SweepResult)
 {
-	Super::Tick(DeltaTime);
+	if (!OtherActor->Implements<UPlayerInterface>()) return;
+	bReached = true;
 
+	for (AAuraEnemySpawnPoint* Point:SpawnPoints)
+	{
+		if (IsValid(Point))
+		{
+			Point->SpawnEnemy();
+		}
+	}
+	Box->SetCollisionEnabled(ECollisionEnabled::Type::NoCollision);
 }
+
 
