@@ -5,7 +5,7 @@
 
 #include "AbilitySystemBlueprintLibrary.h"
 #include "AbilitySystemComponent.h"
-#include "AbilitySystemInterface.h"
+#include "Kismet/KismetMathLibrary.h"
 
 
 // Sets default values
@@ -16,11 +16,55 @@ AAuraEffectActor::AAuraEffectActor()
 	SetRootComponent(CreateDefaultSubobject<USceneComponent>("SceneRoot"));
 }
 
+void AAuraEffectActor::Tick(float DeltaTime)
+{
+	Super::Tick(DeltaTime);
+	RunningTime += DeltaTime;
+	const float SinePeriod = 2.f * PI / SinePeriodConstant;
+	if (RunningTime > SinePeriod)
+	{
+		RunningTime = 0.f;
+	}
+	ItemMovement(DeltaTime);
+}
+
+void AAuraEffectActor::ItemMovement(float DeltaTime)
+{
+	if (bRotates)
+	{
+		const FRotator DeltaRotation(0.f, DeltaTime * RotationRate, 0.f);
+		CalculateRotation = UKismetMathLibrary::ComposeRotators(DeltaRotation, CalculateRotation);
+	}
+	if (bSineMovement)
+	{
+		const float Sine = SineAmplitude * FMath::Sin(RunningTime * SinePeriodConstant);
+		CalculateLocation=InitialLocation+FVector(0.f,0.f,Sine);
+	}
+}
 
 void AAuraEffectActor::BeginPlay()
 {
 	Super::BeginPlay();
+
+	InitialLocation = GetActorLocation();
+	CalculateLocation = InitialLocation;
+	CalculateRotation = GetActorRotation();
 }
+
+void AAuraEffectActor::StartSineMovement()
+{
+	bSineMovement = true;
+	InitialLocation = GetActorLocation();
+	CalculateLocation = InitialLocation;
+}
+
+void AAuraEffectActor::StartRotation()
+{
+	bRotates = true;
+	CalculateRotation = GetActorRotation();
+}
+
+
 
 void AAuraEffectActor::ApplyEffectToTarget(AActor* TargetActor, TSubclassOf<UGameplayEffect> GameplayEffectClass)
 {
@@ -39,8 +83,8 @@ void AAuraEffectActor::ApplyEffectToTarget(AActor* TargetActor, TSubclassOf<UGam
 	FActiveGameplayEffectHandle ActiveGameplayEffectHandle = TargetACS->ApplyGameplayEffectSpecToSelf(
 		*EffectSpecHandle.Data.Get());
 
-	const bool bIsInfinite = EffectSpecHandle.Data.Get()->Def.Get()->DurationPolicy ==EGameplayEffectDurationType::Infinite;
-	if (bIsInfinite && InfiniteEffectRemovalPolicy ==EEffectRemovalPolicy::RemoveOnEndOverlay)
+	const bool bIsInfinite = EffectSpecHandle.Data.Get()->Def.Get()->DurationPolicy == EGameplayEffectDurationType::Infinite;
+	if (bIsInfinite && InfiniteEffectRemovalPolicy == EEffectRemovalPolicy::RemoveOnEndOverlay)
 	{
 		ActiveEffectHandles.Add(ActiveGameplayEffectHandle, TargetACS);
 	}

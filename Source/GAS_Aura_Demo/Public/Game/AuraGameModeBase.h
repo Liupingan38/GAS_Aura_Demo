@@ -7,6 +7,7 @@
 #include "GameFramework/GameModeBase.h"
 #include "AuraGameModeBase.generated.h"
 
+class ULootTiers;
 class USaveGame;
 class UCharacterClassInfo;
 class UMVVM_LoadSlot;
@@ -25,6 +26,9 @@ public:
 
 	UPROPERTY(EditDefaultsOnly, Category="AbilityInfo")
 	TObjectPtr<UAbilityInfo> AbilityInfo;
+
+	UPROPERTY(EditDefaultsOnly, Category="Loot Tiers")
+	TObjectPtr<ULootTiers> LootTiers;
 
 	void SaveWorldState(UWorld* World, const FString& DestinationMapAssetName = FString("")) const;
 	void LoadWorldState(UWorld* World) const;

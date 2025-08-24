@@ -76,4 +76,7 @@ protected:
 
 	UPROPERTY(EditAnywhere, Category="AI")
 	TObjectPtr<UBehaviorTree> BehaviorTree;
+
+	UFUNCTION(BlueprintImplementableEvent)
+	void SpawnLoot();
 };
